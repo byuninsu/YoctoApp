@@ -1,0 +1,46 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          init_ssd
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Initialize SSDs
+# Description:       This script formats and mounts SSDs on boot.
+### END INIT INFO
+
+# 마운트 포인트 생성
+mkdir -p /dev/dataSSD
+mkdir -p /dev/osSSD
+
+# nvme0n1 디스크 포맷, 이미 포맷되어 있으면 스킵
+if ! grep -qs '/dev/nvme0n1 ' /proc/mounts; then
+    if ! blkid /dev/nvme0n1 | grep -q ext4; then
+        echo "Formatting /dev/nvme0n1..."
+        mkfs.ext4 /dev/nvme0n1
+    fi
+fi
+
+# nvme1n1 디스크 포맷, 이미 포맷되어 있으면 스킵
+if ! grep -qs '/dev/nvme1n1 ' /proc/mounts; then
+    if ! blkid /dev/nvme1n1 | grep -q ext4; then
+        echo "Formatting /dev/nvme1n1..."
+        mkfs.ext4 /dev/nvme1n1
+    fi
+fi
+
+# nvme0n1 마운트
+if ! mountpoint -q /dev/dataSSD; then
+    echo "Mounting /dev/nvme0n1 to /dev/dataSSD..."
+    mount /dev/nvme0n1 /dev/dataSSD
+fi
+
+# nvme1n1 마운트
+if ! mountpoint -q /dev/osSSD; then
+    echo "Mounting /dev/nvme1n1 to /dev/osSSD..."
+    mount /dev/nvme1n1 /dev/osSSD
+fi
+
+echo "SSD initialization complete."
+exit 0
+
