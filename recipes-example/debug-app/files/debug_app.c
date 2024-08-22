@@ -10,6 +10,7 @@
 #include "led_control.h"
 #include "ethernet_control.h"
 #include "discrete_in.h"
+#include "optic_control.h"
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -247,6 +248,22 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[2], "stop") == 0) {
             StopWatchDog();
         }
+    }
+
+    // Handling 'optic' commands
+    else if (strcmp(argv[1], "optic") == 0) {
+        if (argc < 2) {
+            fprintf(stderr, "Usage: %s optic <get>\n", argv[0]);
+            return 1;
+        }
+
+        if (strcmp(argv[2], "test") == 0) {
+            getOpticTestRegister();
+        } 
+
+        if (strcmp(argv[2], "set") == 0) {
+            setOpticPort();
+        } 
     }
 
     else {

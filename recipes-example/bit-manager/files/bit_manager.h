@@ -1,8 +1,6 @@
 #ifndef BIT_MANAGER_H
 #define BIT_MANAGER_H
 
-#define GPU_API
-
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -15,7 +13,11 @@
 #include <stddef.h>  
 
 // 함수 선언
+size_t GetItemCount();
+const char* GetItemName(uint32_t mItem);
 int check_ssd(const char *ssd_path);
+int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype);
+cJSON*  ReadBitErrorLog(void);
 int check_gpio_expander();
 int check_discrete_out();
 int checkDiscrete_in();
@@ -26,10 +28,10 @@ int checkRs232();
 int checkEthernetSwitch();
 int checkTempSensor();
 int checkPowerMonitor();
-uint32_t GPU_API RequestBit(uint32_t mtype);
-uint32_t GPU_API readtBitResult(void);
-uint32_t GPU_API WriteBitErrorData(uint32_t bitStatus, uint32_t mtype);
-cJSON* GPU_API ReadBitErrorLog(void);
+int checkOptic();
+void  RequestBit(uint32_t mtype);
+uint32_t readtBitResult(uint32_t type);
+
 
 
 #endif // BIT_MANAGER_H

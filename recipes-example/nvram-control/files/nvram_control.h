@@ -15,7 +15,7 @@
 uint32_t GPU_API ReadSystemLog(uint32_t nvramAddress);
 uint32_t GPU_API WriteSystemLogReasonCountCustom(uint32_t resetReason, uint32_t value);
 uint32_t GPU_API WriteSystemLogReasonCount(uint32_t resetReason);
-uint32_t GPU_API WriteOperationModeStatus(uint8_t operationModeState);
+uint32_t GPU_API WriteMaintenanceModeStatus(uint8_t operationModeState);
 uint32_t GPU_API ReadMaintenanceModeStatus(void);
 uint32_t GPU_API WriteBootCondition(uint8_t bootingConditionState); 
 uint32_t GPU_API ReadBootCondition(void);

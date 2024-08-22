@@ -14,6 +14,7 @@ DEPENDS += "nvram-control"
 DEPENDS += "led-control"
 DEPENDS += "ethernet-control"
 DEPENDS += "discrete-in"
+DEPENDS += "optic-control"
 
 SRC_URI = "file://bit_manager.c \
            file://bit_manager.h"
@@ -30,6 +31,7 @@ do_compile() {
      -I${STAGING_INCDIR}/led-control \
      -I${STAGING_INCDIR}/ethernet-control \
      -I${STAGING_INCDIR}/discrete-in \
+     -I${STAGING_INCDIR}/optic-control \
      -o bit-manager bit_manager.c \
      -lusb-control \
      -lstm32-control \
@@ -38,7 +40,8 @@ do_compile() {
      -lnvram-control \
      -lled-control \
      -lethernet-control \
-     -ldiscrete-in
+     -ldiscrete-in \
+     -loptic-control
 }
 
 

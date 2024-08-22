@@ -19,13 +19,16 @@
 #include "led_control.h"
 #include "ethernet_control.h"
 #include "discrete_in.h"
+#include "optic_control.h"
 
 #define LOG_FILE_DIR "/dev/dataSSD/"
 #define LOG_FILE_NAME "BitErrorLog.json"
 
 
 char iface[20] = {0};
-uint32_t bitStatus = 0; 
+uint32_t powerOnBitResult = 0; 
+uint32_t ContinuousBitResult = 0; 
+uint32_t initiatedBitResult = 0; 
 
 const char* itemNames[] = {
     "GPU module",
@@ -55,7 +58,7 @@ const char* GetItemName(uint32_t mItem) {
     }
 }
 
-uint32_t GPU_API WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
+int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     FILE *logFile;
     time_t now;
     struct tm *timeinfo;
@@ -99,7 +102,7 @@ uint32_t GPU_API WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     return 0;
 }
 
-cJSON* GPU_API ReadBitErrorLog(void) {
+cJSON*  ReadBitErrorLog(void) {
     FILE *logFile;
     char logFilePath[128];
     char buffer[1024];
@@ -426,7 +429,7 @@ int checkNvram() {
 
     // NVRAM에 값을 쓰는 명령어 실행
 
-    if(WriteSystemLogReasonCount(address) == 1) {
+    if(WriteSystemLogReasonCountCustom(address, writeValue) == 1) {
         printf("Failed to write to NVRAM.\n");
         return 1;
     } 
@@ -558,7 +561,22 @@ int checkUsb(void){
     return 0;
 }
 
-uint32_t GPU_API RequestBit(uint32_t mtype) {
+int checkOptic(void){
+
+    uint32_t result = getOpticTestRegister();
+
+    if(result == 0x10){
+        printf("checkOptic passed !");
+        return 0;
+    } else {
+        return 1;
+    }
+    
+}
+
+void  RequestBit(uint32_t mtype) {
+
+    uint32_t bitStatus = 0;
 
     // 각 상태를 순서대로 비트에 저장
     bitStatus |= (checkGPU() << 0);                     // GPU 상태 (비트 0)
@@ -571,7 +589,7 @@ uint32_t GPU_API RequestBit(uint32_t mtype) {
     bitStatus |= (checkRs232() << 7);                   // RS232 상태 (비트 7)
     bitStatus |= (check_ssd("os") << 8);                // OS SSD 상태 (비트 8)
     bitStatus |= (checkEthernetSwitch() << 9);          // Ethernet Switch 상태 (비트 9)
-    bitStatus |= (1 << 10);                             // Optic Transceiver 상태 (비트 10)
+    bitStatus |= (checkOptic() << 10);                             // Optic Transceiver 상태 (비트 10)
     bitStatus |= (checkTempSensor() << 11);             // 온도 센서 상태 (비트 11)
     bitStatus |= (checkPowerMonitor() << 12);           // 전력 모니터 상태 (비트 12)
 
@@ -590,13 +608,28 @@ uint32_t GPU_API RequestBit(uint32_t mtype) {
     printf("Temperature Sensor: %u\n", (bitStatus >> 11) & 1);
     printf("Power Monitor: %u\n", (bitStatus >> 12) & 1);
 
+    if(mtype == 2) {
+        powerOnBitResult = bitStatus;
+    } else if (mtype == 3 ) {
+        ContinuousBitResult = bitStatus;
+    } else if (mtype == 4 ) {
+        initiatedBitResult = bitStatus;
+    }
+
     if(bitStatus != 0){
-        WriteBitErrorData(bitStatus, type);
+        WriteBitErrorData(bitStatus, mtype);
     }   
 }
 
-uint32_t GPU_API readtBitResult(void){
-    return bitStatus;
+uint32_t readtBitResult(uint32_t type){
+
+    if(type == 2) {
+        return powerOnBitResult;
+    } else if (type == 3 ) {
+        return ContinuousBitResult;
+    } else if (type == 4 ) {
+        return initiatedBitResult;
+    }
 }
 
 
@@ -642,6 +675,8 @@ int main(int argc, char *argv[]) {
         checkPowerMonitor();
     } else if (strcmp(option, "usb") == 0){
         checkUsb();
+    } else if (strcmp(option, "usb") == 0){
+        checkOptic();
     } else if (strcmp(option, "all") == 0){
         uint32_t type = 4;
         RequestBit(type);
