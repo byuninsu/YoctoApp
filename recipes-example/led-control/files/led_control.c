@@ -100,9 +100,9 @@ uint32_t GPU_API setLedState(uint8_t gpio, uint16_t value) {
         i2c_read_byte(GPIO_EXPENDER_00P, &port_value);
         // 새로운 값 설정
         if (value) {
-            new_value = port_value & ~mask; // 비트 클리어
-        } else {
             new_value = port_value | mask; // 비트 설정
+        } else {
+            new_value = port_value & ~mask; // 비트 클리어
         }
         // Output Port 0에 새로운 값 쓰기
         i2c_write_byte(GPIO_EXPENDER_00P, new_value);
@@ -112,9 +112,10 @@ uint32_t GPU_API setLedState(uint8_t gpio, uint16_t value) {
         i2c_read_byte(GPIO_EXPENDER_01P, &port_value);
         // 새로운 값 설정
         if (value) {
-            new_value = port_value & ~mask; // 비트 클리어
-        } else {
             new_value = port_value | mask; // 비트 설정
+        } else {
+            new_value = port_value & ~mask; // 비트 클리어
+     
         }
         // Output Port 1에 새로운 값 쓰기
         i2c_write_byte(GPIO_EXPENDER_01P, new_value);
@@ -197,6 +198,7 @@ uint32_t GPU_API getConfState(uint8_t port, uint8_t *value) {
 
 uint32_t GPU_API setDiscreteOut(uint8_t gpio, uint16_t value) {
     unsigned char reg  = 0;
+    unsigned char initReg  = 0;
     unsigned char port_value;
     unsigned char new_value;
     uint8_t currentValue = 0;
@@ -207,8 +209,10 @@ uint32_t GPU_API setDiscreteOut(uint8_t gpio, uint16_t value) {
 
     if(gpio < 8){
         reg = GPIO_EXPENDER_CONF_00P;
+        initReg = GPIO_EXPENDER_00P;
     }else if (gpio >= 8 ){
         reg = GPIO_EXPENDER_CONF_01P;
+        initReg = GPIO_EXPENDER_01P;
     }
 
     if (i2c_read_byte(reg, &currentValue) != 0) {
@@ -218,8 +222,7 @@ uint32_t GPU_API setDiscreteOut(uint8_t gpio, uint16_t value) {
 
     if(currentValue != 0x00){
         i2c_write_byte(reg,0x00);
-        i2c_write_byte(GPIO_EXPENDER_CONF_00P,0x00);
-        i2c_write_byte(GPIO_EXPENDER_CONF_01P,0x00);
+        i2c_write_byte(initReg, 0x00);
         printf("set configuration Value : 0xFF"); 
     }
 

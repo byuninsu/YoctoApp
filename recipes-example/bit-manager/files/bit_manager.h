@@ -11,6 +11,7 @@
 #include <linux/sockios.h>
 #include <arpa/inet.h>
 #include <stddef.h>  
+#include <cjson/cJSON.h> 
 
 // 함수 선언
 size_t GetItemCount();
@@ -28,6 +29,7 @@ int checkRs232();
 int checkEthernetSwitch();
 int checkTempSensor();
 int checkPowerMonitor();
+int checkUsb(void);
 int checkOptic();
 void  RequestBit(uint32_t mtype);
 uint32_t readtBitResult(uint32_t type);

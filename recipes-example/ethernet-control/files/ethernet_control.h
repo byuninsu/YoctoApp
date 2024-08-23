@@ -16,8 +16,9 @@ extern "C" {
 #endif
 
 // 함수 선언
-uint8_t GPU_API setEthernetPort(char *iface, int port, int state);
-uint32_t GPU_API getEthernetPort(char *iface, int port);
+char * checkEthernetInterface();
+uint8_t GPU_API setEthernetPort(int port, int state);
+uint32_t GPU_API getEthernetPort(int port);
 
 #ifdef __cplusplus
 }

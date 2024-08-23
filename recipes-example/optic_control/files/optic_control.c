@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <sys/ioctl.h>
 #include <string.h>
+#include "ethernet_control.h"
 
 #define TRANSCEIVER_ADDR 0x6b // 970-00402 의 I2C 주소
 
@@ -62,16 +63,18 @@ static int i2c_write_byte(unsigned char reg, unsigned char value) {
     return 0;
 }
 
-uint32_t GPU_API getOpticTestRegister(void) {
-
-    uint32_t currentValue = 0;
+uint32_t getOpticTestRegister(void) {
+    unsigned char byteValue = 0; 
+    uint32_t currentValue = '0';
 
     i2cInit();
 
-    if (i2c_read_byte(TRANSCEIVER_TEST_RESISTER, &currentValue) != 0) {
+    if (i2c_read_byte(TRANSCEIVER_TEST_RESISTER, &byteValue) != 0) {
         fprintf(stderr, "Failed to read from I2C device\n");
         return 1;
     }
+
+    currentValue = (uint32_t)byteValue;
 
     printf("Current TRANSCEIVER_TEST_RESISTER Value : %d", currentValue);
 
@@ -79,7 +82,7 @@ uint32_t GPU_API getOpticTestRegister(void) {
 }
 
 
-uint8_t setOpticPort(void) {
+void setOpticPort(void) {
     const char *scripts[] = {
         "/usr/bin/port9.sh",
         "/usr/bin/port10.sh",
@@ -91,16 +94,24 @@ uint8_t setOpticPort(void) {
     };
 
     size_t num_scripts = sizeof(scripts) / sizeof(scripts[0]);
+    uint8_t result = 0;
+
+    char *iface = checkEthernetInterface();
+    
+    if (iface == NULL) {
+        printf("No valid Ethernet interface found.\n");
+    }
 
     for (size_t i = 0; i < num_scripts; i++) {
-        int status = system(scripts[i]);
+        char command[256];
+        snprintf(command, sizeof(command), "%s %s", scripts[i], iface);
+
+        int status = system(command);
         if (status == -1) {
             printf("Failed to execute %s\n", scripts[i]);
-            return 1;
+
         } else {
             printf("Executed %s successfully\n", scripts[i]);
-            return 0;
         }
     }
 }
-

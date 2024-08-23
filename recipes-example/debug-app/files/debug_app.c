@@ -11,6 +11,7 @@
 #include "ethernet_control.h"
 #include "discrete_in.h"
 #include "optic_control.h"
+#include "bit_manager.h"
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -82,19 +83,14 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Usage: %s ethernet <1~9> <set|get> <gpio|conf> [args...]\n", argv[0]);
             return 1;
         }
-
-        int port = atoi(argv[2]);
-
-        if (strcmp(argv[3], "get") == 0) {
-            char *interface = argv[4];
-            int port = atoi(argv[5]);
-            getEthernetPort(interface, port);
+        if (strcmp(argv[2], "get") == 0) {
+            int port = atoi(argv[3]);
+            getEthernetPort(port);
             
-        } else if (strcmp(argv[3], "set") == 0) {
-            char *interface = argv[4];
-            int port = atoi(argv[5]);
-            int value = atoi(argv[6]);
-            setEthernetPort(interface, port, value);
+        } else if (strcmp(argv[2], "set") == 0) {
+            int port = atoi(argv[3]);
+            int value = atoi(argv[4]);
+            setEthernetPort(port, value);
         }
     }
 
@@ -253,7 +249,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
     // Handling 'optic' commands
     else if (strcmp(argv[1], "optic") == 0) {
         if (argc < 2) {
-            fprintf(stderr, "Usage: %s optic <get>\n", argv[0]);
+            fprintf(stderr, "Usage: %s optic <get/set>\n", argv[0]);
             return 1;
         }
 
@@ -264,6 +260,82 @@ else if (strcmp(argv[1], "nvram") == 0) {
         if (strcmp(argv[2], "set") == 0) {
             setOpticPort();
         } 
+    }
+
+    // BIT Check commands
+    else if (strcmp(argv[1], "check") == 0) {
+        if (argc < 2) {
+            fprintf(stderr, "Usage: %s check <options>\n", argv[0]);
+            return 1;
+        }
+
+        const char *option = argv[2];
+
+        if (strcmp(option, "gpio") == 0) {
+            check_gpio_expander();
+        } else if (strcmp(option, "ssd") == 0) {
+            char *option = argv[3];
+            if (strcmp(option, "os") == 0 ){
+                check_ssd("os");
+            }else if (strcmp(option, "data") == 0){
+                check_ssd("data");
+            }
+        } else if (strcmp(option, "discrete") == 0) {
+            char *option = argv[3];
+            if (strcmp(option, "out") == 0 ){
+                check_discrete_out();
+            }else if (strcmp(option, "in") == 0){
+                checkDiscrete_in();
+            }
+        } else if (strcmp(option, "ethernet") == 0){
+            checkEthernet();
+        } else if (strcmp(option, "gpu") == 0){
+            checkGPU();
+        } else if (strcmp(option, "nvram") == 0){
+            checkNvram();
+        } else if (strcmp(option, "rs232") == 0){
+            checkRs232();
+        } else if (strcmp(option, "switch") == 0){
+            checkEthernetSwitch();
+        } else if (strcmp(option, "temp") == 0){
+            checkTempSensor();
+        } else if (strcmp(option, "power") == 0){
+            checkPowerMonitor();
+        } else if (strcmp(option, "usb") == 0){
+            checkUsb();
+        } else if (strcmp(option, "optic") == 0){
+            checkOptic();
+        } else if (strcmp(option, "read") == 0){
+            uint32_t type = (uint32_t)strtoul(argv[3], NULL, 0); 
+            const char *type_str;
+
+            switch (type) {
+                case 2:
+                    type_str = "power-on";
+                    break;
+                case 3:
+                    type_str = "continuous";
+                    break;
+                case 4:
+                    type_str = "initiated";
+                    break;
+                default:
+                    type_str = "unknown";
+                    break;
+            }
+
+            uint32_t result = readtBitResult(type);
+
+
+            printf("BIT Result Value [%s]: %u\n", type_str, readtBitResult(result));
+
+        } else if (strcmp(option, "all") == 0){
+            uint32_t type = (uint32_t)strtoul(argv[3], NULL, 0); 
+            RequestBit(type);
+        } else {
+            printf("Invalid option. Use 'gpio', 'ssd', or 'discrete'.\n");
+            return 1;
+        }
     }
 
     else {

@@ -5,6 +5,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 PACKAGE_NAME = "optic-control"
 
+DEPENDS += "ethernet-control"
+
 PN = "optic-control"
 
 SRC_URI = "file://optic_control.c \
@@ -12,9 +14,10 @@ SRC_URI = "file://optic_control.c \
 S = "${WORKDIR}"
 
 do_compile() {
-    ${CC} ${CFLAGS} -c optic_control.c -o optic_control.o
+    ${CC} ${CFLAGS} -I${STAGING_INCDIR}/ethernet-control -c optic_control.c -o optic_control.o
     ar rcs liboptic-control.a optic_control.o
 }
+
 
 do_install() {
     install -d ${D}${includedir}

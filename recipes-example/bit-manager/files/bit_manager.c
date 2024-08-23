@@ -331,7 +331,6 @@ int checkEthernet() {
     int sock;
     struct ifreq ifr;
 
-    char *target_mac = "48:b0:2d:55:cb:dc";
     char mac_addr[18];
     struct ethtool_value edata;
 
@@ -362,9 +361,9 @@ int checkEthernet() {
                  (unsigned char)ifr.ifr_hwaddr.sa_data[4],
                  (unsigned char)ifr.ifr_hwaddr.sa_data[5]);
 
-        // 목표 MAC 주소와 비교
-        if (strcmp(mac_addr, target_mac) == 0) {
-            printf("Interface %s has the target MAC address: %s\n", iface, mac_addr);
+        // MAC 주소의 첫 바이트가 48(0x30)로 시작하는지 확인
+        if ((unsigned char)ifr.ifr_hwaddr.sa_data[0] == 0x48) {
+            printf("Interface %s has a MAC address starting with 48: %s\n", iface, mac_addr);
 
             // ethtool을 사용하여 링크 상태 확인
             edata.cmd = ETHTOOL_GLINK;
@@ -386,7 +385,7 @@ int checkEthernet() {
             }
         }
     }
-
+    
     close(sock);
     return 1; // 링크 감지되지 않음, 비정상 작동
 }
@@ -473,8 +472,8 @@ int checkEthernetSwitch() {
         checkEthernet();
     }
 
-    setEthernetPort(iface, port, status);
-    result = getEthernetPort(iface, port);
+    setEthernetPort(port, status);
+    result = getEthernetPort(port);
 
     if(result == 0x0078) {
         printf("ethernet port 1 disable success");
@@ -482,8 +481,8 @@ int checkEthernetSwitch() {
 
     status = 1;
 
-    setEthernetPort(iface, port, status);
-    result = getEthernetPort(iface, port);
+    setEthernetPort(port, status);
+    result = getEthernetPort(port);
 
     if(result == 0x007f) {
         printf("ethernet port 1 enable success");
@@ -589,7 +588,7 @@ void  RequestBit(uint32_t mtype) {
     bitStatus |= (checkRs232() << 7);                   // RS232 상태 (비트 7)
     bitStatus |= (check_ssd("os") << 8);                // OS SSD 상태 (비트 8)
     bitStatus |= (checkEthernetSwitch() << 9);          // Ethernet Switch 상태 (비트 9)
-    bitStatus |= (checkOptic() << 10);                             // Optic Transceiver 상태 (비트 10)
+    bitStatus |= (checkOptic() << 10);                  // Optic Transceiver 상태 (비트 10)
     bitStatus |= (checkTempSensor() << 11);             // 온도 센서 상태 (비트 11)
     bitStatus |= (checkPowerMonitor() << 12);           // 전력 모니터 상태 (비트 12)
 
@@ -607,6 +606,12 @@ void  RequestBit(uint32_t mtype) {
     printf("Optic Transceiver: %u\n", (bitStatus >> 10) & 1);
     printf("Temperature Sensor: %u\n", (bitStatus >> 11) & 1);
     printf("Power Monitor: %u\n", (bitStatus >> 12) & 1);
+
+
+    if(bitStatus != 0){
+        printf("bit error occerd bitStatus : %d , mtype : .\n", bitStatus, mtype);
+    }
+
 
     if(mtype == 2) {
         powerOnBitResult = bitStatus;
@@ -633,62 +638,62 @@ uint32_t readtBitResult(uint32_t type){
 }
 
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        printf("Usage: %s <gpio|ssd|discrete> <os|data|in|out>\n", argv[0]);
-        return 1;
-    }
+// int main(int argc, char *argv[]) {
+//     if (argc < 2) {
+//         printf("Usage: %s <gpio|ssd|discrete> <os|data|in|out>\n", argv[0]);
+//         return 1;
+//     }
 
-    const char *option = argv[1];
+//     const char *option = argv[1];
 
-    int result = 0;
+//     int result = 0;
 
-    if (strcmp(option, "gpio") == 0) {
-        result = check_gpio_expander();
-    } else if (strcmp(option, "ssd") == 0) {
-        char *option = argv[2];
-        if (strcmp(option, "os") == 0 ){
-            result = check_ssd("os");
-        }else if (strcmp(option, "data") == 0){
-            result = check_ssd("data");
-        }
-    } else if (strcmp(option, "discrete") == 0) {
-        char *option = argv[2];
-        if (strcmp(option, "out") == 0 ){
-            result = check_discrete_out();
-        }else if (strcmp(option, "in") == 0){
-            checkDiscrete_in();
-        }
-    } else if (strcmp(option, "ethernet") == 0){
-        checkEthernet();
-    } else if (strcmp(option, "gpu") == 0){
-        checkGPU();
-    } else if (strcmp(option, "nvram") == 0){
-        checkNvram();
-    } else if (strcmp(option, "rs232") == 0){
-        checkRs232();
-    } else if (strcmp(option, "switch") == 0){
-        checkEthernetSwitch();
-    } else if (strcmp(option, "temp") == 0){
-        checkTempSensor();
-    } else if (strcmp(option, "power") == 0){
-        checkPowerMonitor();
-    } else if (strcmp(option, "usb") == 0){
-        checkUsb();
-    } else if (strcmp(option, "usb") == 0){
-        checkOptic();
-    } else if (strcmp(option, "all") == 0){
-        uint32_t type = 4;
-        RequestBit(type);
-    } else {
-        printf("Invalid option. Use 'gpio', 'ssd', or 'discrete'.\n");
-        return 1;
-    }
-    if (result == 0) {
-        printf("Check completed successfully.\n");
-    } else {
-        printf("Check failed.\n");
-    }
+//     if (strcmp(option, "gpio") == 0) {
+//         result = check_gpio_expander();
+//     } else if (strcmp(option, "ssd") == 0) {
+//         char *option = argv[2];
+//         if (strcmp(option, "os") == 0 ){
+//             result = check_ssd("os");
+//         }else if (strcmp(option, "data") == 0){
+//             result = check_ssd("data");
+//         }
+//     } else if (strcmp(option, "discrete") == 0) {
+//         char *option = argv[2];
+//         if (strcmp(option, "out") == 0 ){
+//             result = check_discrete_out();
+//         }else if (strcmp(option, "in") == 0){
+//             checkDiscrete_in();
+//         }
+//     } else if (strcmp(option, "ethernet") == 0){
+//         checkEthernet();
+//     } else if (strcmp(option, "gpu") == 0){
+//         checkGPU();
+//     } else if (strcmp(option, "nvram") == 0){
+//         checkNvram();
+//     } else if (strcmp(option, "rs232") == 0){
+//         checkRs232();
+//     } else if (strcmp(option, "switch") == 0){
+//         checkEthernetSwitch();
+//     } else if (strcmp(option, "temp") == 0){
+//         checkTempSensor();
+//     } else if (strcmp(option, "power") == 0){
+//         checkPowerMonitor();
+//     } else if (strcmp(option, "usb") == 0){
+//         checkUsb();
+//     } else if (strcmp(option, "usb") == 0){
+//         checkOptic();
+//     } else if (strcmp(option, "all") == 0){
+//         uint32_t type = 4;
+//         RequestBit(type);
+//     } else {
+//         printf("Invalid option. Use 'gpio', 'ssd', or 'discrete'.\n");
+//         return 1;
+//     }
+//     if (result == 0) {
+//         printf("Check completed successfully.\n");
+//     } else {
+//         printf("Check failed.\n");
+//     }
 
-    return result;
-}
+//     return result;
+// }

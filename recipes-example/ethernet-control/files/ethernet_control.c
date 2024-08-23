@@ -1,11 +1,89 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>  
 #include <string.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 #include "ethernet_control.h"
 
+static char iface[20] = {0};
 
-uint8_t GPU_API setEthernetPort(char *iface, int port, int state) {
+char * checkEthernetInterface() {
+    int sock;
+    struct ifreq ifr;
+
+    char mac_addr[18];
+    struct ethtool_value edata;
+
+    // 네트워크 인터페이스를 위한 소켓 생성
+    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+        perror("socket");
+        return NULL;
+    }
+
+    // eth0과 eth1 인터페이스를 순차적으로 확인
+    for (int i = 0; i < 2; i++) {
+        snprintf(iface, sizeof(iface), "eth%d", i);
+        strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+
+        // MAC 주소 가져오기
+        if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
+            perror("ioctl SIOCGIFHWADDR");
+            close(sock);
+            return NULL;
+        }
+
+        // MAC 주소를 문자열로 변환
+        snprintf(mac_addr, sizeof(mac_addr), "%02x:%02x:%02x:%02x:%02x:%02x",
+                 (unsigned char)ifr.ifr_hwaddr.sa_data[0],
+                 (unsigned char)ifr.ifr_hwaddr.sa_data[1],
+                 (unsigned char)ifr.ifr_hwaddr.sa_data[2],
+                 (unsigned char)ifr.ifr_hwaddr.sa_data[3],
+                 (unsigned char)ifr.ifr_hwaddr.sa_data[4],
+                 (unsigned char)ifr.ifr_hwaddr.sa_data[5]);
+
+        if ((unsigned char)ifr.ifr_hwaddr.sa_data[0] == 0x48) {
+            printf("Interface %s has a MAC address starting with 48: %s\n", iface, mac_addr);
+
+            // ethtool을 사용하여 링크 상태 확인
+            edata.cmd = ETHTOOL_GLINK;
+            ifr.ifr_data = (caddr_t)&edata;
+
+            if (ioctl(sock, SIOCETHTOOL, &ifr) == -1) {
+                perror("ioctl SIOCETHTOOL");
+                close(sock);
+                return NULL;
+            }
+
+            // edata.data가 1이면 링크가 감지됨
+            if (edata.data) {
+                printf("Link detected on %s\n", iface);
+                close(sock);
+                return iface; // 링크 감지됨, 정상 작동
+            } else {
+                printf("No link detected on %s\n", iface);
+            }
+        }
+    }
+
+    close(sock);
+
+    return NULL; 
+}
+
+
+
+uint8_t GPU_API setEthernetPort(int port, int state) {
+
+    if (iface[0] == '\0') {
+        checkEthernetInterface();
+    }
+
+
     char command[256];
 
     // MDIO 레지스터 주소 및 값
@@ -32,7 +110,11 @@ uint8_t GPU_API setEthernetPort(char *iface, int port, int state) {
     return 0;
 }
 
-uint32_t GPU_API getEthernetPort(char *iface, int port) {
+uint32_t GPU_API getEthernetPort(int port) {
+
+    if (iface[0] == '\0') {
+        checkEthernetInterface();
+    }
     char command[256];
     char result[128];
     FILE *fp;
