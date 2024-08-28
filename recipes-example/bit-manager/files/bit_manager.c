@@ -30,6 +30,7 @@ uint32_t powerOnBitResult = 0;
 uint32_t ContinuousBitResult = 0; 
 uint32_t initiatedBitResult = 0; 
 
+
 const char* itemNames[] = {
     "GPU module",
     "SSD (Data store)",
@@ -592,6 +593,10 @@ void  RequestBit(uint32_t mtype) {
     bitStatus |= (checkTempSensor() << 11);             // 온도 센서 상태 (비트 11)
     bitStatus |= (checkPowerMonitor() << 12);           // 전력 모니터 상태 (비트 12)
 
+
+    bitStatus |= (1 << 31); // flag setting
+
+
     // 각 상태를 출력
     printf("GPU module: %u\n", (bitStatus >> 0) & 1);
     printf("SSD (Data store): %u\n", (bitStatus >> 1) & 1);
@@ -608,33 +613,18 @@ void  RequestBit(uint32_t mtype) {
     printf("Power Monitor: %u\n", (bitStatus >> 12) & 1);
 
 
-    if(bitStatus != 0){
-        printf("bit error occerd bitStatus : %d , mtype : .\n", bitStatus, mtype);
-    }
-
-
-    if(mtype == 2) {
-        powerOnBitResult = bitStatus;
-    } else if (mtype == 3 ) {
-        ContinuousBitResult = bitStatus;
-    } else if (mtype == 4 ) {
-        initiatedBitResult = bitStatus;
-    }
-
-    if(bitStatus != 0){
+    if((bitStatus >> 31) & 1 ){
+        printf("bit error occurred, bitStatus: 0x%08X, mtype: 0x%08X.\n", bitStatus, mtype);
         WriteBitErrorData(bitStatus, mtype);
-    }   
+    }
+
+    WriteBitResult(mtype, bitStatus);
+  
 }
 
 uint32_t readtBitResult(uint32_t type){
 
-    if(type == 2) {
-        return powerOnBitResult;
-    } else if (type == 3 ) {
-        return ContinuousBitResult;
-    } else if (type == 4 ) {
-        return initiatedBitResult;
-    }
+    return ReadBitResult(type);
 }
 
 
