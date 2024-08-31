@@ -619,7 +619,8 @@ void  RequestBit(uint32_t mtype) {
     }
 
     WriteBitResult(mtype, bitStatus);
-  
+
+
 }
 
 uint32_t readtBitResult(uint32_t type){

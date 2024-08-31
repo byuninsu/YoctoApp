@@ -146,7 +146,11 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[3], "system") == 0) {
             uint32_t addr = (uint32_t)strtoul(argv[4], NULL, 0); 
             WriteSystemLogReasonCount(addr);
-        } else {
+        } else if (strcmp(argv[3], "custom") == 0) {
+            uint32_t addr = (uint32_t)strtoul(argv[4], NULL, 0); 
+            uint32_t value = (uint32_t)strtoul(argv[5], NULL, 0);
+            WriteSystemLogReasonCountCustom(addr, value);
+        }else {
             fprintf(stderr, "Invalid write type: %s\n", argv[3]);
         }
     } else if (strcmp(argv[2], "read") == 0) {
@@ -163,7 +167,12 @@ else if (strcmp(argv[1], "nvram") == 0) {
             uint32_t result = ReadSystemLog(addr);
             printf("Reading systemLog Value at 0x%08x: %u\n", addr, result); 
 
-        } else {
+        } else if (strcmp(argv[3], "custom") == 0) {
+            uint32_t addr = (uint32_t)strtoul(argv[4], NULL, 0);
+            uint32_t result = ReadSystemLogReasonCountCustom(addr);
+            printf("Reading systemLog Value at 0x%08x: %u\n", addr, result); 
+
+        }else {
             fprintf(stderr, "Invalid read type: %s\n", argv[3]);
         }
     } else {
@@ -238,12 +247,14 @@ else if (strcmp(argv[1], "nvram") == 0) {
             fprintf(stderr, "Usage: %s watchdog <start|stop>\n", argv[0]);
             return 1;
         }
-
         if (strcmp(argv[2], "start") == 0) {
             StartWatchDog();
         } else if (strcmp(argv[2], "stop") == 0) {
             StopWatchDog();
-        }
+        } else if (strcmp(argv[2], "settime") == 0) {
+            int time = atoi(argv[3]);
+            SetWatchDogTimeout(time);
+        } 
     }
 
     // Handling 'optic' commands
@@ -324,10 +335,10 @@ else if (strcmp(argv[1], "nvram") == 0) {
                     break;
             }
 
-            uint32_t result = readtBitResult(type);
+            uint32_t result = ReadBitResult(type);
 
 
-            printf("BIT Result Value [%s]: %u\n", type_str, readtBitResult(result));
+            printf("BIT Result Value [%s]: 0x%X8\n", type_str, result);
 
         } else if (strcmp(option, "all") == 0){
             uint32_t type = (uint32_t)strtoul(argv[3], NULL, 0); 

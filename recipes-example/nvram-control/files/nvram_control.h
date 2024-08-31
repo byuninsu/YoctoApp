@@ -20,6 +20,8 @@ uint32_t GPU_API ReadMaintenanceModeStatus(void);
 uint32_t GPU_API WriteBootCondition(uint8_t bootingConditionState); 
 uint32_t GPU_API ReadBootCondition(void);
 uint32_t getNVRAMId(void);
+uint32_t GPU_API ReadBitResult(uint32_t address);
+uint32_t GPU_API  ReadSystemLogReasonCountCustom(uint32_t addr);
 
 
 #endif  // NVRAM_CONTROL_H

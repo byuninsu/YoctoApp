@@ -19,6 +19,7 @@ extern "C" {
 uint32_t GPU_API StartWatchDog(void);
 uint32_t GPU_API StopWatchDog(void);
 uint32_t SetWatchDogTimeout(int timeout);
+uint32_t SetWatchDog0Timeout(int timeout);
 
 #ifdef __cplusplus
 }

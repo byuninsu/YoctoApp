@@ -448,26 +448,33 @@ uint32_t GPU_API ReadBootCondition(void) {
 
 
 uint32_t GPU_API WriteBitResult(uint32_t address, uint32_t bitResult) {
+    printf("WriteBitResult input address = 0x%08x bitResult = 0x%08x\n", address, bitResult);
     switch (address) {
         case 2 :
-            return WriteNVRAMValue(NVRAM_BIT_RESULT_POWERON, bitResult);
+            printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON \n");
+            return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON, bitResult);
         case 3 :
-            return WriteNVRAMValue(NVRAM_BIT_RESULT_CONTINUOUS, bitResult);
+            printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS \n");
+            return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS, bitResult);
         case 4 :
-            return WriteNVRAMValue(NVRAM_BIT_RESULT_INITIATED, bitResult);
+            printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED \n");
+            return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED, bitResult);
     }
 
     return 1;
 }
 
 uint32_t GPU_API ReadBitResult(uint32_t address) {
-        switch (address) {
+
+    printf("ReadBitResult++ \n");
+
+    switch (address) {
         case 2 :
-            return ReadNVRAMValue(NVRAM_BIT_RESULT_POWERON);
+            return ReadNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON);
         case 3 :
-            return ReadNVRAMValue(NVRAM_BIT_RESULT_CONTINUOUS);
+            return ReadNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS);
         case 4 :
-            return ReadNVRAMValue(NVRAM_BIT_RESULT_INITIATED);
+            return ReadNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED);
     }
 
     return 1;
@@ -496,27 +503,36 @@ uint32_t GPU_API  ReadSystemLog(uint32_t nvramAddress) {
     }
 }
 
+uint32_t GPU_API  ReadSystemLogReasonCountCustom(uint32_t addr) {
+
+    ReadNVRAMValue(addr);
+}
+
+
+
 
 uint32_t GPU_API  WriteSystemLogReasonCountCustom(uint32_t resetReason, uint32_t value) {
 
-       switch (resetReason) {
-            case 2:                 
-                 return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, value);
-            case 3:                
-                 return WriteNVRAMValue(NVRAM_INIT_COUNT_ADDR, value);
-            case 4:                
-                 return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, value);
-            case 5:                 
-                 return WriteNVRAMValue(NVRAM_FAIL_COUNT_ADDR, value);
-            case 6:                
-                 return WriteNVRAMValue(NVRAM_RESET_COUNT_ADDR, value);
-            case 7: 
-                 return WriteNVRAMValue(NVRAM_UPTIME_ADDR, value); 
-            case 12: 
-                 return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, value);
-            default:
-                 return STATUS_ERROR;
-        }
+    WriteNVRAMValue(resetReason, value);
+
+    //    switch (resetReason) {
+    //         case 2:                 
+    //              return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, value);
+    //         case 3:                
+    //              return WriteNVRAMValue(NVRAM_INIT_COUNT_ADDR, value);
+    //         case 4:                
+    //              return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, value);
+    //         case 5:                 
+    //              return WriteNVRAMValue(NVRAM_FAIL_COUNT_ADDR, value);
+    //         case 6:                
+    //              return WriteNVRAMValue(NVRAM_RESET_COUNT_ADDR, value);
+    //         case 7: 
+    //              return WriteNVRAMValue(NVRAM_UPTIME_ADDR, value); 
+    //         case 12: 
+    //              return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, value);
+    //         default:
+    //              return STATUS_ERROR;
+    //     }
 }
 
 uint32_t GPU_API  WriteSystemLogReasonCount(uint32_t resetReason) {
