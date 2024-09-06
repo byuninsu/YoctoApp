@@ -68,7 +68,7 @@ int i2c_write_byte(unsigned char reg, unsigned char value) {
     return 0;
 }
 
-uint32_t GPU_API setLedState(uint8_t gpio, uint16_t value) {
+uint32_t setLedState(uint8_t gpio, uint16_t value) {
     unsigned char reg  = 0;
     unsigned char port_value;
     unsigned char new_value;
@@ -127,7 +127,7 @@ uint32_t GPU_API setLedState(uint8_t gpio, uint16_t value) {
 }
 
 
-uint8_t GPU_API getGpioState(uint8_t gpio) {
+uint8_t getGpioState(uint8_t gpio) {
     unsigned char mask = 1 << (gpio % 8);
     unsigned char reg = 0;
     unsigned char currentValue = 0;
@@ -158,7 +158,7 @@ uint8_t GPU_API getGpioState(uint8_t gpio) {
     return gpioState;
 }
 
-uint32_t GPU_API setGpioConf(uint8_t port, uint8_t value) {
+uint32_t setGpioConf(uint8_t port, uint8_t value) {
 
     printf("setGpioConf inpu value : %d\n", value);
 
@@ -196,7 +196,7 @@ uint32_t GPU_API getConfState(uint8_t port, uint8_t *value) {
 }
 
 
-uint32_t GPU_API setDiscreteOut(uint8_t gpio, uint16_t value) {
+uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
     unsigned char reg  = 0;
     unsigned char initReg  = 0;
     unsigned char port_value;
@@ -258,7 +258,7 @@ uint32_t GPU_API setDiscreteOut(uint8_t gpio, uint16_t value) {
 }
 
 
-uint8_t GPU_API getDiscreteOut(uint8_t gpio) {
+uint8_t getDiscreteOut(uint8_t gpio) {
     unsigned char mask = 1 << (gpio % 8);
     unsigned char reg = 0;
     unsigned char currentValue = 0;
@@ -289,7 +289,7 @@ uint8_t GPU_API getDiscreteOut(uint8_t gpio) {
     return gpioState;
 }
 
-uint32_t GPU_API setDiscreteConf(uint8_t port, uint8_t value) {
+uint32_t setDiscreteConf(uint8_t port, uint8_t value) {
 
     printf("setDiscreteConf inpu value : %d\n", value);
 
@@ -306,7 +306,7 @@ uint32_t GPU_API setDiscreteConf(uint8_t port, uint8_t value) {
     return 0;
 }
 
-uint32_t GPU_API getDiscreteConf(uint8_t port, uint8_t *value) {
+uint32_t getDiscreteConf(uint8_t port, uint8_t *value) {
     // 포트 범위 확인
     if (port > 1) {
         fprintf(stderr, "Invalid port number: %d\n", port);

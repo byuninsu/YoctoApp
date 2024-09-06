@@ -27,13 +27,13 @@ static uint8_t set_usb_port(const char* port, int enable) {
     return 0; // Return success code
 }
 
-uint8_t GPU_API ActivateUSB(void) {
+uint8_t  ActivateUSB(void) {
     uint8_t result1 = set_usb_port("usb1", 1);
     uint8_t result2 = set_usb_port("usb2", 1);
     return result1 || result2;
 }
 
-uint8_t GPU_API DeactivateUSB(void) {
+uint8_t  DeactivateUSB(void) {
     uint8_t result1 = set_usb_port("usb1", 0);
     uint8_t result2 = set_usb_port("usb2", 0);
     return result1 || result2;

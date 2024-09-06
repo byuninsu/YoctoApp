@@ -189,9 +189,9 @@ else if (strcmp(argv[1], "nvram") == 0) {
 
         uint8_t state = GetButtonState();
         if (state == 1) {
-            printf("Push Button State: OFF\n");
-        } else if (state == 0) {
             printf("Push Button State: ON\n");
+        } else if (state == 0) {
+            printf("Push Button State: OFF\n");
         } else {
             printf("Failed to read Push Button state.\n");
         }
@@ -288,8 +288,24 @@ else if (strcmp(argv[1], "nvram") == 0) {
             char *option = argv[3];
             if (strcmp(option, "os") == 0 ){
                 check_ssd("os");
-            }else if (strcmp(option, "data") == 0){
+            } else if (strcmp(option, "data") == 0){
                 check_ssd("data");
+            } else if (strcmp(option, "smart") == 0){
+                unsigned char smart_log[202] = {0};
+                char *ssdOption = argv[4];
+
+                // get_nvme_smart_log 함수 호출
+                int result = get_nvme_smart_log(ssdOption, smart_log);
+
+                if (result == 0) {
+                    printf("ssd S.M.A.R.T LOG : \n");
+                    for (int i = 0; i < sizeof(smart_log); i++) {
+                        printf("%02X ", smart_log[i]);
+                        if ((i + 1) % 16 == 0) printf("\n"); // 16 바이트마다 줄바꿈
+                    }
+                } else {
+                    printf("Failed to get S.M.A.R.T. log.\n");
+                }
             }
         } else if (strcmp(option, "discrete") == 0) {
             char *option = argv[3];
@@ -338,7 +354,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
             uint32_t result = ReadBitResult(type);
 
 
-            printf("BIT Result Value [%s]: 0x%X8\n", type_str, result);
+            printf("BIT Result Value [%s]: 0x%X\n", type_str, result);
 
         } else if (strcmp(option, "all") == 0){
             uint32_t type = (uint32_t)strtoul(argv[3], NULL, 0); 

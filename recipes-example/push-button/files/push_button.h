@@ -3,10 +3,9 @@
 
 #include <stdint.h>
 
-#define GPU_API
 
 // Function prototypes
-uint8_t GPU_API GetButtonState(void);
+uint8_t GetButtonState(void);
 
 #endif // PUSH_BUTTON_H
 

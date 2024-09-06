@@ -7,7 +7,7 @@
 #define RS232_SUCCESS 0x00
 #define RS232_FAILURE 0x01
 
-uint8_t GPU_API ActivateRS232(void) {
+uint8_t ActivateRS232(void) {
     char command[256];
     snprintf(command, sizeof(command), "echo %s > %sbind", SERIAL_DEVICE, SYSFS_PATH);
     if (system(command) == -1) {
@@ -19,7 +19,7 @@ uint8_t GPU_API ActivateRS232(void) {
     }
 }
 
-uint8_t GPU_API DeactivateRS232(void) {
+uint8_t DeactivateRS232(void) {
     char command[256];
     snprintf(command, sizeof(command), "echo %s > %sunbind", SERIAL_DEVICE, SYSFS_PATH);
     if (system(command) == -1) {

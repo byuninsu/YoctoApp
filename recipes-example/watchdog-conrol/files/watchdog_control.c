@@ -12,7 +12,7 @@
 #define STATUS_ERROR   0x01
 #define CONFIG_FILE "/etc/watchdog.conf" 
 
-uint32_t GPU_API StartWatchDog(void) {
+uint32_t StartWatchDog(void) {
     int ret = system("sudo service watchdog start");
     if (ret == -1) {
         perror("Failed to start watchdog service");
@@ -23,7 +23,7 @@ uint32_t GPU_API StartWatchDog(void) {
     }
 }
 
-uint32_t GPU_API ReStartWatchDog(void) {
+uint32_t ReStartWatchDog(void) {
     int ret = system("sudo service watchdog restart");
     if (ret == -1) {
         perror("Failed to restart watchdog service");
@@ -34,7 +34,7 @@ uint32_t GPU_API ReStartWatchDog(void) {
     }
 }
 
-uint32_t GPU_API StopWatchDog(void) {
+uint32_t StopWatchDog(void) {
     int ret = system("sudo service watchdog stop");
     if (ret == -1) {
         perror("Failed to stop watchdog service");

@@ -112,7 +112,7 @@ uint32_t nvramInit(void) {
 
 uint32_t ReadNVRAMValue(uint32_t address) {
     uint8_t tx_buf1[4];  // 명령어 및 주소 전송 버퍼
-    uint8_t tx_buf2[1] = { 0xFF };  // 더미 데이터 전송 버퍼
+    uint8_t tx_buf2[1] = { 0x00 };  // 더미 데이터 전송 버퍼
     uint8_t rx_buf[1] = { 0 };  // 데이터 수신 버퍼
     uint32_t nvram_output = 0;
 
@@ -249,7 +249,7 @@ uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
 
 uint32_t ReadNVRAM4ByteValue(uint32_t address) {
     uint8_t tx_buf1[4];  // 명령어 및 주소 전송 버퍼
-    uint8_t tx_buf2[1] = { 0xFF };  // 더미 데이터 전송 버퍼
+    uint8_t tx_buf2[1] = { 0x00 };  // 더미 데이터 전송 버퍼
     uint8_t rx_buf[1] = { 0 };  // 데이터 수신 버퍼
     uint32_t nvram_output = 0;
 
@@ -290,6 +290,10 @@ uint32_t ReadNVRAM4ByteValue(uint32_t address) {
             close(fd);
             return 1;
         }
+
+
+        printf("ReadNVRAM4ByteValue rx_buf = 0x%02X\n", rx_buf[0]);
+    
 
         // 수신된 데이터 처리 (1바이트 읽음)
         nvram_output |= (rx_buf[0] << (8 * (3 - i))); // MSB부터 채움
@@ -382,7 +386,7 @@ uint32_t WriteNVRAM4ByteValue(uint32_t address, uint32_t value) {
 
 uint32_t getNVRAMId(void) {
     uint8_t tx_buf1[1] = { NVRAM_SPI_CMD_GETID }; // 명령어 전송 버퍼
-    uint8_t tx_buf2[4] = { 0xFF, 0xFF, 0xFF, 0xFF }; // 더미 데이터 전송 버퍼
+    uint8_t tx_buf2[4] = { 0x00, 0x00, 0x00, 0x00 }; // 더미 데이터 전송 버퍼
     uint8_t rx_buf[4] = { 0 }; // 수신 버퍼
     uint32_t nvram_output = 0;
 
@@ -430,24 +434,24 @@ uint32_t getNVRAMId(void) {
     return nvram_output;
 }
 
-uint32_t GPU_API WriteMaintenanceModeStatus(uint8_t maintenanceModeState) {
+uint32_t  WriteMaintenanceModeStatus(uint8_t maintenanceModeState) {
     return WriteNVRAMValue(NVRAM_MAINTENANCE_MODE, maintenanceModeState);
 }
 
-uint32_t GPU_API ReadMaintenanceModeStatus(void) {
+uint32_t  ReadMaintenanceModeStatus(void) {
     return ReadNVRAMValue(NVRAM_MAINTENANCE_MODE);
 }
 
-uint32_t GPU_API WriteBootCondition(uint8_t bootingConditionState) {
+uint32_t  WriteBootCondition(uint8_t bootingConditionState) {
     return WriteNVRAMValue(NVRAM_BOOTING_CONDITION, bootingConditionState);
 }
 
-uint32_t GPU_API ReadBootCondition(void) {
+uint32_t  ReadBootCondition(void) {
     return ReadNVRAMValue(NVRAM_BOOTING_CONDITION);
 }
 
 
-uint32_t GPU_API WriteBitResult(uint32_t address, uint32_t bitResult) {
+uint32_t  WriteBitResult(uint32_t address, uint32_t bitResult) {
     printf("WriteBitResult input address = 0x%08x bitResult = 0x%08x\n", address, bitResult);
     switch (address) {
         case 2 :
@@ -464,7 +468,7 @@ uint32_t GPU_API WriteBitResult(uint32_t address, uint32_t bitResult) {
     return 1;
 }
 
-uint32_t GPU_API ReadBitResult(uint32_t address) {
+uint32_t  ReadBitResult(uint32_t address) {
 
     printf("ReadBitResult++ \n");
 
@@ -482,7 +486,7 @@ uint32_t GPU_API ReadBitResult(uint32_t address) {
 
 
 
-uint32_t GPU_API  ReadSystemLog(uint32_t nvramAddress) {
+uint32_t   ReadSystemLog(uint32_t nvramAddress) {
     switch (nvramAddress) {
         case 2:
             return ReadNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR);
@@ -503,7 +507,7 @@ uint32_t GPU_API  ReadSystemLog(uint32_t nvramAddress) {
     }
 }
 
-uint32_t GPU_API  ReadSystemLogReasonCountCustom(uint32_t addr) {
+uint32_t  ReadSystemLogReasonCountCustom(uint32_t addr) {
 
     ReadNVRAMValue(addr);
 }
@@ -511,7 +515,7 @@ uint32_t GPU_API  ReadSystemLogReasonCountCustom(uint32_t addr) {
 
 
 
-uint32_t GPU_API  WriteSystemLogReasonCountCustom(uint32_t resetReason, uint32_t value) {
+uint32_t  WriteSystemLogReasonCountCustom(uint32_t resetReason, uint32_t value) {
 
     WriteNVRAMValue(resetReason, value);
 
@@ -535,7 +539,29 @@ uint32_t GPU_API  WriteSystemLogReasonCountCustom(uint32_t resetReason, uint32_t
     //     }
 }
 
-uint32_t GPU_API  WriteSystemLogReasonCount(uint32_t resetReason) {
+uint32_t  WriteSystemLogTest(uint32_t resetReason, uint32_t value) {
+
+       switch (resetReason) {
+            case 2:                 
+                 return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, value);
+            case 3:                
+                 return WriteNVRAMValue(NVRAM_INIT_COUNT_ADDR, value);
+            case 4:                
+                 return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, value);
+            case 5:                 
+                 return WriteNVRAMValue(NVRAM_FAIL_COUNT_ADDR, value);
+            case 6:                
+                 return WriteNVRAMValue(NVRAM_RESET_COUNT_ADDR, value);
+            case 7: 
+                 return WriteNVRAMValue(NVRAM_UPTIME_ADDR, value); 
+            case 12: 
+                 return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, value);
+            default:
+                 return STATUS_ERROR;
+        }
+}
+
+uint32_t  WriteSystemLogReasonCount(uint32_t resetReason) {
 
     uint32_t readValue = ReadSystemLog(resetReason);
     uint32_t writeValue = readValue + 1;
@@ -559,6 +585,7 @@ uint32_t GPU_API  WriteSystemLogReasonCount(uint32_t resetReason) {
                  return STATUS_ERROR;
         }
 }
+
 
 
 

@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <time.h>
+#include <linux/nvme_ioctl.h>
 #include "cJSON.h"
 #include "bit_manager.h"
 #include "usb_control.h"
@@ -21,15 +22,18 @@
 #include "discrete_in.h"
 #include "optic_control.h"
 
-#define LOG_FILE_DIR "/dev/dataSSD/"
+#define LOG_FILE_DIR "/dev/dataSSD"
 #define LOG_FILE_NAME "BitErrorLog.json"
+#define LOG_BUFFER_SIZE 4096
+#define SMART_LOG_SIZE 202
+#define NVME_DEVICE_DATA "/dev/nvme0n1"
+#define NVME_DEVICE_OS "/dev/nvme1n1"
 
 
 char iface[20] = {0};
 uint32_t powerOnBitResult = 0; 
 uint32_t ContinuousBitResult = 0; 
 uint32_t initiatedBitResult = 0; 
-
 
 const char* itemNames[] = {
     "GPU module",
@@ -46,6 +50,113 @@ const char* itemNames[] = {
     "Temperature Sensor",
     "Power Monitor"
 };
+
+int get_nvme_smart_log() {
+    FILE *fp;
+    char command[256];
+    char buffer[256];
+    char key[128], value[128];
+
+    // SMART 데이터 변수 선언
+    int critical_warning = 0;
+    int temperature = 0;
+    int available_spare = 0;
+    int available_spare_threshold = 0;
+    int percentage_used = 0;
+    uint64_t data_units_read = 0;
+    uint64_t data_units_written = 0;
+    uint64_t host_read_commands = 0;
+    uint64_t host_write_commands = 0;
+    uint64_t controller_busy_time = 0;
+    uint64_t power_cycles = 0;
+    uint64_t power_on_hours = 0;
+    uint64_t unsafe_shutdowns = 0;
+    uint64_t media_errors = 0;
+    int warning_temperature_time = 0;
+    int critical_temperature_time = 0;
+    int temperature_sensor_1 = 0;
+
+    // 명령어 구성
+    snprintf(command, sizeof(command), "nvme smart-log %s", NVME_DEVICE_DATA);
+
+    // 명령어 실행
+    fp = popen(command, "r");
+    if (fp == NULL) {
+        perror("Failed to run command");
+        return 1;
+    }
+
+    // 각 줄을 읽어와서 키와 값을 파싱
+    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+        // 줄에서 key와 value를 분리
+        if (sscanf(buffer, "%[^:]:%[^\n]", key, value) == 2) {
+            // 공백 제거
+            for (char *p = value; *p; ++p) if (*p == ' ') memmove(p, p + 1, strlen(p));
+
+            // 각 키에 따른 값을 변수에 저장
+            if (strcmp(key, "critical_warning") == 0) {
+                critical_warning = atoi(value);
+            } else if (strcmp(key, "temperature") == 0) {
+                temperature = atoi(value);
+            } else if (strcmp(key, "available_spare") == 0) {
+                available_spare = atoi(value);
+            } else if (strcmp(key, "available_spare_threshold") == 0) {
+                available_spare_threshold = atoi(value);
+            } else if (strcmp(key, "percentage_used") == 0) {
+                percentage_used = atoi(value);
+            } else if (strcmp(key, "data_units_read") == 0) {
+                data_units_read = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "data_units_written") == 0) {
+                data_units_written = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "host_read_commands") == 0) {
+                host_read_commands = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "host_write_commands") == 0) {
+                host_write_commands = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "controller_busy_time") == 0) {
+                controller_busy_time = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "power_cycles") == 0) {
+                power_cycles = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "power_on_hours") == 0) {
+                power_on_hours = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "unsafe_shutdowns") == 0) {
+                unsafe_shutdowns = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "media_errors") == 0) {
+                media_errors = strtoull(value, NULL, 10);
+            } else if (strcmp(key, "Warning Temperature Time") == 0) {
+                warning_temperature_time = atoi(value);
+            } else if (strcmp(key, "Critical Composite Temperature Time") == 0) {
+                critical_temperature_time = atoi(value);
+            } else if (strcmp(key, "Temperature Sensor 1") == 0) {
+                temperature_sensor_1 = atoi(value);
+            }
+        }
+    }
+
+    // 프로세스 종료
+    pclose(fp);
+
+    // 최종 출력
+    printf("NVMe SMART Log for device: %s\n", NVME_DEVICE_DATA);
+    printf("Critical Warning: %d\n", critical_warning);
+    printf("Temperature: %d C\n", temperature);
+    printf("Available Spare: %d%%\n", available_spare);
+    printf("Available Spare Threshold: %d%%\n", available_spare_threshold);
+    printf("Percentage Used: %d%%\n", percentage_used);
+    printf("Data Units Read: %llu\n", data_units_read);
+    printf("Data Units Written: %llu\n", data_units_written);
+    printf("Host Read Commands: %llu\n", host_read_commands);
+    printf("Host Write Commands: %llu\n", host_write_commands);
+    printf("Controller Busy Time: %llu\n", controller_busy_time);
+    printf("Power Cycles: %llu\n", power_cycles);
+    printf("Power On Hours: %llu\n", power_on_hours);
+    printf("Unsafe Shutdowns: %llu\n", unsafe_shutdowns);
+    printf("Media Errors: %llu\n", media_errors);
+    printf("Warning Temperature Time: %d\n", warning_temperature_time);
+    printf("Critical Composite Temperature Time: %d\n", critical_temperature_time);
+    printf("Temperature Sensor 1: %d C\n", temperature_sensor_1);
+
+    return 0;
+}
 
 size_t GetItemCount() {
     return sizeof(itemNames) / sizeof(itemNames[0]);
@@ -429,7 +540,7 @@ int checkNvram() {
 
     // NVRAM에 값을 쓰는 명령어 실행
 
-    if(WriteSystemLogReasonCountCustom(address, writeValue) == 1) {
+    if(WriteSystemLogTest(address, writeValue) == 1) {
         printf("Failed to write to NVRAM.\n");
         return 1;
     } 
@@ -688,3 +799,4 @@ uint32_t readtBitResult(uint32_t type){
 
 //     return result;
 // }
+

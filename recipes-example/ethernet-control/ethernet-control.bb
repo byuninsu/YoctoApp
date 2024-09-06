@@ -7,7 +7,8 @@ PACKAGE_NAME = "ethernet-control"
 PN = "ethernet-control"
 
 SRC_URI = "file://ethernet_control.c \
-           file://ethernet_control.h"
+           file://ethernet_control.h \
+           file://mii.h"
 S = "${WORKDIR}"
 
 do_compile() {

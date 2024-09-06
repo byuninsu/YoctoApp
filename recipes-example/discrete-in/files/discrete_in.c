@@ -83,10 +83,10 @@ uint32_t discreteSpiInit(void) {
     return 0; // 초기화 성공
 }
 
-uint32_t GPU_API GetDiscreteState(void) {
+uint32_t GetDiscreteState(void) {
     uint8_t tx_buf1[1];
     uint8_t tx_buf2[4] = { 0xFF }; // 더미 데이터 전송 버퍼
-    uint8_t rx_buf[4] = { 0 }; // 데이터 수신 버퍼
+    uint8_t rx_buf[4] = { 0 };     // 데이터 수신 버퍼
     uint32_t discrete_state = 0;
 
     discreteSpiInit(); // SPI 초기화 함수 호출
@@ -112,13 +112,14 @@ uint32_t GPU_API GetDiscreteState(void) {
         }
     };
 
+    // SPI 통신 에러 처리
     if (ioctl(fd, SPI_IOC_MESSAGE(2), getDiscreteXfer) < 0) {
         perror("Failed to write/read SPI");
         close(fd);
-        return 0;
+        return 0xFFFFFFFF; // 에러 발생 시 특정 값을 반환
     }
 
-
+    // 전송 버퍼 및 수신 버퍼 출력
     for (int i = 0; i < sizeof(tx_buf1); i++) {
         printf("GetDiscreteState tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
     }
@@ -127,15 +128,16 @@ uint32_t GPU_API GetDiscreteState(void) {
         printf("GetDiscreteState rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
     }
 
-        // SPI 디바이스 닫기
+    // SPI 디바이스 닫기
     close(fd);
 
-    discrete_state = (rx_buf[0] << 24) | (rx_buf[1] << 16) | (rx_buf[2] << 8) | rx_buf[3] ; 
+    // 수신된 데이터 처리
+    discrete_state = (rx_buf[0] << 24) | (rx_buf[1] << 16) | (rx_buf[2] << 8) | rx_buf[3];
 
     return discrete_state;
 }
 
-uint32_t GPU_API GetDiscreteState7to0(void) {
+uint32_t GetDiscreteState7to0(void) {
     uint8_t tx_buf1[1];
     uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
     uint8_t rx_buf[1] = { 0 }; // 데이터 수신 버퍼
@@ -185,7 +187,7 @@ uint32_t GPU_API GetDiscreteState7to0(void) {
     return discrete_state;
 }
 
-uint32_t GPU_API GetDiscreteState15to8(void) {
+uint32_t GetDiscreteState15to8(void) {
     uint8_t tx_buf1[1];
     uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
     uint8_t rx_buf[1] = { 0 }; // 데이터 수신 버퍼
@@ -236,7 +238,7 @@ uint32_t GPU_API GetDiscreteState15to8(void) {
     return discrete_state;
 }
 
-uint8_t GPU_API ReadProgramSenseBanks(void) {
+uint8_t ReadProgramSenseBanks(void) {
     uint8_t discrete_state = 0;
     uint8_t tx_buf1[1] = {HOLT_READ_SENSE_BANK};  //0x84 명령어
     uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
@@ -285,7 +287,7 @@ uint8_t GPU_API ReadProgramSenseBanks(void) {
     return discrete_state;
 }
 
-void GPU_API WriteProgramSenseBanks(uint8_t bank_settings) {
+void WriteProgramSenseBanks(uint8_t bank_settings) {
     uint8_t tx_buf[2];
 
     printf("WriteProgramSenseBanks input Value : 0x%04X\n", bank_settings);

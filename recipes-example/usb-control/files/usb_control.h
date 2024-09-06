@@ -3,11 +3,10 @@
 
 #include <stdint.h>
 
-#define GPU_API
 
 // Function prototypes
-uint8_t GPU_API ActivateUSB(void);
-uint8_t GPU_API DeactivateUSB(void);
+uint8_t  ActivateUSB(void);
+uint8_t  DeactivateUSB(void);
 
 #endif // USB_CONTROL_H
 

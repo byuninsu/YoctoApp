@@ -26,7 +26,4 @@ do_install() {
     install -m 0644 libwatchdog-control.a ${D}${libdir}
 }
 
-INSANE_SKIP_${PN} = "installed-vs-shipped"
-
-
 

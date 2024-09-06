@@ -9,13 +9,13 @@
 
 
 // 함수 선언들
-uint32_t GPU_API setLedState(uint8_t gpio, uint16_t value);
-uint8_t GPU_API getGpioState(uint8_t gpio);
-uint32_t GPU_API setGpioConf(uint8_t port, uint8_t value);
-uint32_t GPU_API getConfState(uint8_t port, uint8_t *value);
-uint32_t GPU_API setDiscreteOut(uint8_t gpio, uint16_t value);
-uint8_t GPU_API getDiscreteOut(uint8_t gpio);
-uint32_t GPU_API setDiscreteConf(uint8_t port, uint8_t value);
-uint32_t GPU_API getDiscreteConf(uint8_t port, uint8_t *value);
+uint32_t  setLedState(uint8_t gpio, uint16_t value);
+uint8_t  getGpioState(uint8_t gpio);
+uint32_t  setGpioConf(uint8_t port, uint8_t value);
+uint32_t  getConfState(uint8_t port, uint8_t *value);
+uint32_t  setDiscreteOut(uint8_t gpio, uint16_t value);
+uint8_t  getDiscreteOut(uint8_t gpio);
+uint32_t  setDiscreteConf(uint8_t port, uint8_t value);
+uint32_t  getDiscreteConf(uint8_t port, uint8_t *value);
 
 #endif // LED_CONTROL_H

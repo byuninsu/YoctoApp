@@ -34,6 +34,7 @@ int checkUsb(void);
 int checkOptic();
 void  RequestBit(uint32_t mtype);
 uint32_t readtBitResult(uint32_t type);
+int print_nvme_smart_log();
 
 
 

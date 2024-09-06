@@ -58,7 +58,7 @@ float sendCommand(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[1] = { command };
+    uint8_t tx_buf[1] = { command};
 	uint8_t tx_buf2[4] = { 0xFF,0xFF,0xFF,0xFF };
     uint8_t spi_rx_buf[4] = { 0 }; 
     float data;
@@ -82,13 +82,12 @@ float sendCommand(stm32_spi_reg command) {
         }
     };
 
-
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
         perror("Failed to send command");
         return -1;
     }
 
-	usleep(100000);
+	usleep(10000);
 
 	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
         perror("Failed to receive data");
@@ -105,19 +104,120 @@ float sendCommand(stm32_spi_reg command) {
     // 바이트 배열을 float로 변환
     data = *(float*)spi_rx_buf;
 
+    if (fd != -1) {
+        close(fd);   
+        fd = -1;     
+    }
+
     return data;
 }
 
+uint8_t sendOnlyOne(stm32_spi_reg command) {
 
-float GPU_API getTempSensorValue(void){
+    spiInit();
+
+    uint8_t tx_buf[1] = { command};
+    float data;
+
+    struct spi_ioc_transfer xfer[1] = {
+        {
+            .tx_buf = (uintptr_t)tx_buf,
+            .rx_buf = 0,
+            .len = sizeof(tx_buf),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        },
+    };
+
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
+        perror("Failed to spi sendOnlyOne");
+        return 1;
+    }
+
+    if (fd != -1) {
+        close(fd);   
+        fd = -1;     
+    }
+    return 0;
+}
+
+
+uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
+
+    spiInit();
+
+    uint8_t tx_buf[1] = { command };
+	uint8_t tx_buf2[1] = { timeout };
+
+    struct spi_ioc_transfer xfer[2] = {
+        {
+            .tx_buf = (uintptr_t)tx_buf,
+            .rx_buf = 0,
+            .len = sizeof(tx_buf),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        },
+        {
+            .tx_buf = (uintptr_t)tx_buf2,
+            .rx_buf = 0,
+            .len = sizeof(tx_buf2),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        }
+    };
+
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
+        perror("Failed to send command");
+        return 1;
+    }
+	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+        perror("Failed to send  Setting data");
+        return 1;
+    }
+
+    printf("sendSetTimeout Command : %x Timeout : %x",tx_buf[0], tx_buf2[0]);
+
+    if (fd != -1) {
+        close(fd);   
+        fd = -1;     
+    }
+
+    return 0;
+
+}
+
+
+float  getTempSensorValue(void){
     return sendCommand(STM32_SPI_REG_TEMP);
 }
 
-float GPU_API getCurrentValue(void){
+float  getCurrentValue(void){
     return sendCommand(STM32_SPI_REG_CURRUNT);
 }
 
-float GPU_API getVoltageValue(void){
+float  getVoltageValue(void){
     return sendCommand(STM32_SPI_REG_VOL);
 }
+
+uint8_t  sendStartWatchdog(void){
+    return sendOnlyOne(STM32_SPI_START_WATCHDOG);
+}
+
+uint8_t  sendStopWatchdog(void){
+    return sendOnlyOne(STM32_SPI_STOP_WATCHDOG);
+}
+
+uint8_t  sendKeepAlive(void){
+    return sendOnlyOne(STM32_SPI_SEND_KEEPALIVE);
+}
+
+uint8_t  sendCommandTimeout(uint8_t timeout){
+    return sendSetTimeout(STM32_SPI_SEND_SETTIMEOUT, timeout);
+}
+
+
+
 

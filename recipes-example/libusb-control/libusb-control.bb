@@ -18,7 +18,7 @@ do_compile() {
 
 do_install() {
     install -d ${D}${includedir}
-    install -m 0644 libusb_control.h ${D}${includedir}
+    install -m 0644 libusb_control.h ${D}${includedir}/libusb_control.h
 
     install -d ${D}${libdir}
     install -m 0755 libusb-control.so.1.0.0 ${D}${libdir}
@@ -26,8 +26,9 @@ do_install() {
     ln -sf libusb-control.so.1.0.0 ${D}${libdir}/libusb-control.so
 }
 
-FILES_${PN} = "${libdir}/libusb-control.so*"
+# 패키징 설정
+FILES_${PN} += "${includedir}/libusb_control.h"
+FILES_${PN} += "${libdir}/libusb-control.so*"
 FILES_${PN}-dev += "${includedir}/libusb_control.h ${libdir}/libusb-control.so"
-
 
 
