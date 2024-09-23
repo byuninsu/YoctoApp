@@ -49,7 +49,8 @@ typedef enum {
     NVRAM_BOOTING_CONDITION = 0x34,
     NVRAM_BIT_RESULT_POWERON = 0x38,
     NVRAM_BIT_RESULT_CONTINUOUS = 0x3C,
-    NVRAM_BIT_RESULT_INITIATED = 0x40
+    NVRAM_BIT_RESULT_INITIATED = 0x40,
+    NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR = 0x44
 } NvramAddress;
 
     
@@ -500,6 +501,8 @@ uint32_t   ReadSystemLog(uint32_t nvramAddress) {
             return ReadNVRAMValue(NVRAM_RESET_COUNT_ADDR);
         case 7:          
             return ReadNVRAMValue(NVRAM_UPTIME_ADDR);
+        case 8:          
+            return ReadNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR);
         case 12:          
             return ReadNVRAMValue(NVRAM_ACTIVATED_TEST);
         default:
@@ -518,25 +521,6 @@ uint32_t  ReadSystemLogReasonCountCustom(uint32_t addr) {
 uint32_t  WriteSystemLogReasonCountCustom(uint32_t resetReason, uint32_t value) {
 
     WriteNVRAMValue(resetReason, value);
-
-    //    switch (resetReason) {
-    //         case 2:                 
-    //              return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, value);
-    //         case 3:                
-    //              return WriteNVRAMValue(NVRAM_INIT_COUNT_ADDR, value);
-    //         case 4:                
-    //              return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, value);
-    //         case 5:                 
-    //              return WriteNVRAMValue(NVRAM_FAIL_COUNT_ADDR, value);
-    //         case 6:                
-    //              return WriteNVRAMValue(NVRAM_RESET_COUNT_ADDR, value);
-    //         case 7: 
-    //              return WriteNVRAMValue(NVRAM_UPTIME_ADDR, value); 
-    //         case 12: 
-    //              return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, value);
-    //         default:
-    //              return STATUS_ERROR;
-    //     }
 }
 
 uint32_t  WriteSystemLogTest(uint32_t resetReason, uint32_t value) {
@@ -578,7 +562,9 @@ uint32_t  WriteSystemLogReasonCount(uint32_t resetReason) {
             case 6:                
                  return WriteNVRAMValue(NVRAM_RESET_COUNT_ADDR, writeValue);
             case 7: 
-                 return WriteNVRAMValue(NVRAM_UPTIME_ADDR, writeValue); 
+                 return WriteNVRAMValue(NVRAM_UPTIME_ADDR, writeValue);
+            case 8: 
+                 return WriteNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, writeValue);  
             case 12: 
                  return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, writeValue);
             default:

@@ -58,7 +58,7 @@ float sendCommand(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[1] = { command};
+    uint8_t tx_buf[2] = { command, 0x00 };
 	uint8_t tx_buf2[4] = { 0xFF,0xFF,0xFF,0xFF };
     uint8_t spi_rx_buf[4] = { 0 }; 
     float data;
@@ -116,7 +116,7 @@ uint8_t sendOnlyOne(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[1] = { command};
+    uint8_t tx_buf[2] = { command, 0x00 };
     float data;
 
     struct spi_ioc_transfer xfer[1] = {
@@ -217,6 +217,8 @@ uint8_t  sendKeepAlive(void){
 uint8_t  sendCommandTimeout(uint8_t timeout){
     return sendSetTimeout(STM32_SPI_SEND_SETTIMEOUT, timeout);
 }
+
+
 
 
 
