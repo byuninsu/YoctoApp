@@ -10,8 +10,8 @@
 ### END INIT INFO
 
 # 마운트 포인트 생성
-mkdir -p /dev/dataSSD
-mkdir -p /dev/osSSD
+mkdir -p /mnt/dataSSD
+mkdir -p /mnt/osSSD
 
 # nvme0n1 디스크 포맷, 이미 포맷되어 있으면 스킵
 if ! grep -qs '/dev/nvme0n1 ' /proc/mounts; then
@@ -30,15 +30,15 @@ if ! grep -qs '/dev/nvme1n1 ' /proc/mounts; then
 fi
 
 # nvme0n1 마운트
-if ! mountpoint -q /dev/dataSSD; then
-    echo "Mounting /dev/nvme0n1 to /dev/dataSSD..."
-    mount /dev/nvme0n1 /dev/dataSSD
+if ! mountpoint -q /mnt/dataSSD; then
+    echo "Mounting /dev/nvme0n1 to /mnt/dataSSD..."
+    mount /dev/nvme0n1 /mnt/dataSSD
 fi
 
 # nvme1n1 마운트
-if ! mountpoint -q /dev/osSSD; then
-    echo "Mounting /dev/nvme1n1 to /dev/osSSD..."
-    mount /dev/nvme1n1 /dev/osSSD
+if ! mountpoint -q /mnt/osSSD; then
+    echo "Mounting /dev/nvme1n1 to /mnt/osSSD..."
+    mount /dev/nvme1n1 /mnt/osSSD
 fi
 
 echo "SSD initialization complete."

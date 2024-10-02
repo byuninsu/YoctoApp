@@ -273,6 +273,22 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } 
     }
 
+        // Handling 'stp' commands
+    else if (strcmp(argv[1], "stp") == 0) {
+        if (argc < 2) {
+            fprintf(stderr, "Usage: %s stp <1/0>\n", argv[0]);
+            return 1;
+        }
+
+        if (strcmp(argv[2], "1") == 0) {
+            setEthernetStp(1);
+        } 
+
+        if (strcmp(argv[2], "0") == 0) {
+            setEthernetStp(0);
+        } 
+    }
+
     // BIT Check commands
     else if (strcmp(argv[1], "check") == 0) {
         if (argc < 2) {

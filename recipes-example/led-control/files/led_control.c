@@ -43,6 +43,13 @@ uint8_t i2cInit(uint8_t addr) {
     return 0;
 }
 
+void i2cClose() {
+    if (i2c_fd >= 0) {
+        close(i2c_fd);
+        i2c_fd = -1;  // 파일 디스크립터를 초기화하여 재사용 방지
+    }
+}
+
 // I2C 장치에서 바이트를 읽는 함수
 int i2c_read_byte(unsigned char reg, unsigned char *value) {
     if (write(i2c_fd, &reg, 1) != 1) {
@@ -123,6 +130,8 @@ uint32_t setLedState(uint8_t gpio, uint16_t value) {
 
     printf("Set GPIO %d to value %d\n", original_gpio, value); // 원래의 gpio 값을 사용하여 출력
 
+    i2cClose();
+
     return 0;
 }
 
@@ -155,6 +164,8 @@ uint8_t getGpioState(uint8_t gpio) {
 
     printf("Current GPIO state %d: %d\n", gpio, gpioState);
 
+    i2cClose();
+
     return gpioState;
 }
 
@@ -172,10 +183,13 @@ uint32_t setGpioConf(uint8_t port, uint8_t value) {
     }
 
     printf("Set GPIO configuration for port %d to value 0x%02x\n", port, value);
+
+    i2cClose();
+    
     return 0;
 }
 
-uint32_t GPU_API getConfState(uint8_t port, uint8_t *value) {
+uint32_t getConfState(uint8_t port, uint8_t *value) {
     // 포트 범위 확인
     if (port > 1) {
         fprintf(stderr, "Invalid port number: %d\n", port);
@@ -192,6 +206,9 @@ uint32_t GPU_API getConfState(uint8_t port, uint8_t *value) {
     }
 
     printf("Current configuration state %d: 0x%02x\n", port, *value);
+
+    i2cClose();
+
     return 0;
 }
 
@@ -254,6 +271,8 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
 
     printf("Set GPIO %d to value %d\n", original_gpio, value); // 원래의 gpio 값을 사용하여 출력
 
+    i2cClose();
+
     return 0;
 }
 
@@ -286,6 +305,8 @@ uint8_t getDiscreteOut(uint8_t gpio) {
 
     printf("Current GPIO state %d: %d\n", gpio, gpioState);
 
+    i2cClose();
+
     return gpioState;
 }
 
@@ -303,6 +324,9 @@ uint32_t setDiscreteConf(uint8_t port, uint8_t value) {
     }
 
     printf("Set GPIO configuration for port %d to value 0x%02x\n", port, value);
+
+    i2cClose();
+
     return 0;
 }
 
@@ -323,6 +347,9 @@ uint32_t getDiscreteConf(uint8_t port, uint8_t *value) {
     }
 
     printf("Current configuration state %d: 0x%02x\n", port, *value);
+
+    i2cClose();
+    
     return 0;
 }
 

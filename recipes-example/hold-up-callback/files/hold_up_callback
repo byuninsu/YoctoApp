@@ -1,0 +1,47 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          init_gpio_event
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: GPIO Event Detection
+# Description:       This script runs the GPIO event detection on boot.
+### END INIT INFO
+
+# GPIO 이벤트 감지 프로그램 경로
+GPIO_EVENT_PATH="/usr/bin/hold_up_callback"
+
+start() {
+    echo "Starting GPIO event detection..."
+    if [ -f $GPIO_EVENT_PATH ]; then
+        $GPIO_EVENT_PATH &
+    else
+        echo "GPIO event detection binary not found!"
+    fi
+}
+
+stop() {
+    echo "Stopping GPIO event detection..."
+    pkill -f $GPIO_EVENT_PATH
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0
+

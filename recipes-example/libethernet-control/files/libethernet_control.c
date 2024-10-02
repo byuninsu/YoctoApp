@@ -149,7 +149,6 @@ char* checkEthernetInterface() {
 }
 
 
-
 uint8_t setEthernetPort(int port, int state) {
     if (iface[0] == '\0') {
         checkEthernetInterface();
@@ -178,7 +177,6 @@ uint8_t setEthernetPort(int port, int state) {
 }
 
 
-
 uint32_t getEthernetPort(int port) {
     if (iface[0] == '\0') {
         checkEthernetInterface();
@@ -204,4 +202,81 @@ uint32_t getEthernetPort(int port) {
     skfd = -1;
     return (uint32_t)result;
 }
+
+// IP 주소 가져오기 함수
+int get_ip_address(const char *iface, char *ip_addr) {
+    int fd;
+    struct ifreq ifr;
+
+    fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd == -1) {
+        perror("Socket failed");
+        return -1;
+    }
+
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ);
+    if (ioctl(fd, SIOCGIFADDR, &ifr) == -1) {
+        perror("ioctl SIOCGIFADDR failed");
+        close(fd);
+        return -1;
+    }
+
+    struct sockaddr_in *ip = (struct sockaddr_in *)&ifr.ifr_addr;
+    strcpy(ip_addr, inet_ntoa(ip->sin_addr));
+
+    close(fd);
+    return 0;
+}
+
+void setEthernetStp(int value) {
+    char command[256];
+    char ip_addr[INET_ADDRSTRLEN];
+
+    // MAC 주소가 48:로 시작하는 인터페이스가 있는지 확인
+    if (iface[0] == '\0') {
+        if (checkEthernetInterface() == NULL) {
+            printf("이더넷 인터페이스를 찾을 수 없습니다.\n");
+            return;
+        }
+    }
+
+    // 인터페이스에서 IP 주소를 가져오기
+    if (get_ip_address(iface, ip_addr) == 0) {
+        printf("인터페이스 %s의 IP: %s\n", iface, ip_addr);
+    } else {
+        printf("IP 주소를 가져오는 데 실패했습니다.\n");
+        return;
+    }
+
+    // IP 이동 및 STP 활성화/비활성화
+    if (value == 1) {
+        system("ip link add name br0 type bridge"); // br0 브리지 생성
+        snprintf(command, sizeof(command), "ip link set dev %s master br0", iface);
+        system(command); // eth0/eth1을 브리지에 추가
+
+        // eth0/eth1에서 IP 제거
+        snprintf(command, sizeof(command), "ip addr flush dev %s", iface);
+        system(command);
+
+        // 인터페이스가 브리지에 정상적으로 추가되었는지 확인
+        system("ip link show br0");
+
+        // br0에 IP 할당
+        snprintf(command, sizeof(command), "ip addr add %s/24 dev br0", ip_addr);
+        system(command);
+
+        // 브리지 및 STP 활성화 (brctl 명령 사용)
+        system("ip link set br0 up");
+        system("brctl stp br0 on");
+        printf("STP 활성화 완료.\n");
+    } else {
+        // STP 비활성화 및 브리지 삭제
+        system("brctl stp br0 off");  // STP 비활성화
+        system("ip link set br0 down"); // 브리지 비활성화
+        system("brctl delbr br0"); // 브리지 삭제
+        printf("STP 비활성화 및 브리지 삭제 완료.\n");
+    }
+}
+
+
 

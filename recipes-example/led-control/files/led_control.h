@@ -3,11 +3,6 @@
 
 #include <stdint.h>
 
-// GPU_API 매크로가 정의되지 않은 경우 정의
-
-#define GPU_API
-
-
 // 함수 선언들
 uint32_t  setLedState(uint8_t gpio, uint16_t value);
 uint8_t  getGpioState(uint8_t gpio);
