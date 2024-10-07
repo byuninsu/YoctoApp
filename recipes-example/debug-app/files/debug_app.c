@@ -68,7 +68,7 @@ int main(int argc, char *argv[]) {
                     getConfState(port, &value);
                 } else if (strcmp(argv[4], "gpio") == 0) {
                     uint8_t port = (uint8_t)strtol(argv[5], NULL, 16);
-                    getGpioState(port);
+                    getDiscreteOut(port);
                 }
             } else {
                 printf("Invalid command. Use set, conf, or get.\n");
