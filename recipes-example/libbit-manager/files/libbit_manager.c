@@ -22,7 +22,7 @@
 #include "discrete_in.h"
 #include "optic_control.h"
 
-#define LOG_FILE_DIR "/dev/dataSSD"
+#define LOG_FILE_DIR "/mnt/dataSSD"
 #define LOG_FILE_NAME "BitErrorLog.json"
 #define LOG_BUFFER_SIZE 4096
 #define SMART_LOG_SIZE 202
@@ -88,52 +88,46 @@ int get_nvme_smart_log() {
 
     // 각 줄을 읽어와서 키와 값을 파싱
     while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        // 공백을 트리밍
-        char *trimmed_value = NULL;
+        // 줄에서 key와 value를 분리
         if (sscanf(buffer, "%[^:]:%[^\n]", key, value) == 2) {
             // 공백 제거
-            for (char *p = value; *p == ' '; ++p) {
-                trimmed_value = p;
-            }
-            if (trimmed_value == NULL) {
-                trimmed_value = value;
-            }
+            for (char *p = value; *p; ++p) if (*p == ' ') memmove(p, p + 1, strlen(p));
 
             // 각 키에 따른 값을 변수에 저장
             if (strcmp(key, "critical_warning") == 0) {
-                critical_warning = atoi(trimmed_value);
+                critical_warning = atoi(value);
             } else if (strcmp(key, "temperature") == 0) {
-                temperature = atoi(trimmed_value);
+                temperature = atoi(value);
             } else if (strcmp(key, "available_spare") == 0) {
-                available_spare = atoi(trimmed_value);
+                available_spare = atoi(value);
             } else if (strcmp(key, "available_spare_threshold") == 0) {
-                available_spare_threshold = atoi(trimmed_value);
+                available_spare_threshold = atoi(value);
             } else if (strcmp(key, "percentage_used") == 0) {
-                percentage_used = atoi(trimmed_value);
+                percentage_used = atoi(value);
             } else if (strcmp(key, "data_units_read") == 0) {
-                data_units_read = strtoull(trimmed_value, NULL, 10);
+                data_units_read = strtoull(value, NULL, 10);
             } else if (strcmp(key, "data_units_written") == 0) {
-                data_units_written = strtoull(trimmed_value, NULL, 10);
+                data_units_written = strtoull(value, NULL, 10);
             } else if (strcmp(key, "host_read_commands") == 0) {
-                host_read_commands = strtoull(trimmed_value, NULL, 10);
+                host_read_commands = strtoull(value, NULL, 10);
             } else if (strcmp(key, "host_write_commands") == 0) {
-                host_write_commands = strtoull(trimmed_value, NULL, 10);
+                host_write_commands = strtoull(value, NULL, 10);
             } else if (strcmp(key, "controller_busy_time") == 0) {
-                controller_busy_time = strtoull(trimmed_value, NULL, 10);
+                controller_busy_time = strtoull(value, NULL, 10);
             } else if (strcmp(key, "power_cycles") == 0) {
-                power_cycles = strtoull(trimmed_value, NULL, 10);
+                power_cycles = strtoull(value, NULL, 10);
             } else if (strcmp(key, "power_on_hours") == 0) {
-                power_on_hours = strtoull(trimmed_value, NULL, 10);
+                power_on_hours = strtoull(value, NULL, 10);
             } else if (strcmp(key, "unsafe_shutdowns") == 0) {
-                unsafe_shutdowns = strtoull(trimmed_value, NULL, 10);
+                unsafe_shutdowns = strtoull(value, NULL, 10);
             } else if (strcmp(key, "media_errors") == 0) {
-                media_errors = strtoull(trimmed_value, NULL, 10);
+                media_errors = strtoull(value, NULL, 10);
             } else if (strcmp(key, "Warning Temperature Time") == 0) {
-                warning_temperature_time = atoi(trimmed_value);
+                warning_temperature_time = atoi(value);
             } else if (strcmp(key, "Critical Composite Temperature Time") == 0) {
-                critical_temperature_time = atoi(trimmed_value);
+                critical_temperature_time = atoi(value);
             } else if (strcmp(key, "Temperature Sensor 1") == 0) {
-                temperature_sensor_1 = atoi(trimmed_value);
+                temperature_sensor_1 = atoi(value);
             }
         }
     }
@@ -260,13 +254,13 @@ cJSON*  ReadBitErrorLog(void) {
 int check_ssd(const char *ssd_path) {
     int status;
 
-    // 경로를 구성하여 실제 디바이스 경로로 변환
+    // 경로를 구성하여 마운트 경로로 변환
     char device_path[512];
 
     if (strcmp(ssd_path, "os") == 0) {
-        snprintf(device_path, sizeof(device_path), "/dev/osSSD/testfile");
+        snprintf(device_path, sizeof(device_path), "/mnt/osSSD/testfile");
     } else if (strcmp(ssd_path, "data") == 0) {
-        snprintf(device_path, sizeof(device_path), "/dev/dataSSD/testfile");
+        snprintf(device_path, sizeof(device_path), "/mnt/dataSSD/testfile");
     } else {
         printf("Error: Invalid SSD path. Use 'os' or 'data'.\n");
         return 1;
@@ -745,63 +739,3 @@ uint32_t readtBitResult(uint32_t type){
     return ReadBitResult(type);
 }
 
-
-// int main(int argc, char *argv[]) {
-//     if (argc < 2) {
-//         printf("Usage: %s <gpio|ssd|discrete> <os|data|in|out>\n", argv[0]);
-//         return 1;
-//     }
-
-//     const char *option = argv[1];
-
-//     int result = 0;
-
-//     if (strcmp(option, "gpio") == 0) {
-//         result = check_gpio_expander();
-//     } else if (strcmp(option, "ssd") == 0) {
-//         char *option = argv[2];
-//         if (strcmp(option, "os") == 0 ){
-//             result = check_ssd("os");
-//         }else if (strcmp(option, "data") == 0){
-//             result = check_ssd("data");
-//         }
-//     } else if (strcmp(option, "discrete") == 0) {
-//         char *option = argv[2];
-//         if (strcmp(option, "out") == 0 ){
-//             result = check_discrete_out();
-//         }else if (strcmp(option, "in") == 0){
-//             checkDiscrete_in();
-//         }
-//     } else if (strcmp(option, "ethernet") == 0){
-//         checkEthernet();
-//     } else if (strcmp(option, "gpu") == 0){
-//         checkGPU();
-//     } else if (strcmp(option, "nvram") == 0){
-//         checkNvram();
-//     } else if (strcmp(option, "rs232") == 0){
-//         checkRs232();
-//     } else if (strcmp(option, "switch") == 0){
-//         checkEthernetSwitch();
-//     } else if (strcmp(option, "temp") == 0){
-//         checkTempSensor();
-//     } else if (strcmp(option, "power") == 0){
-//         checkPowerMonitor();
-//     } else if (strcmp(option, "usb") == 0){
-//         checkUsb();
-//     } else if (strcmp(option, "usb") == 0){
-//         checkOptic();
-//     } else if (strcmp(option, "all") == 0){
-//         uint32_t type = 4;
-//         RequestBit(type);
-//     } else {
-//         printf("Invalid option. Use 'gpio', 'ssd', or 'discrete'.\n");
-//         return 1;
-//     }
-//     if (result == 0) {
-//         printf("Check completed successfully.\n");
-//     } else {
-//         printf("Check failed.\n");
-//     }
-
-//     return result;
-// }

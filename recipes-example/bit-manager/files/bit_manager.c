@@ -22,7 +22,7 @@
 #include "discrete_in.h"
 #include "optic_control.h"
 
-#define LOG_FILE_DIR "/dev/dataSSD"
+#define LOG_FILE_DIR "/mnt/dataSSD"
 #define LOG_FILE_NAME "BitErrorLog.json"
 #define LOG_BUFFER_SIZE 4096
 #define SMART_LOG_SIZE 202
@@ -254,13 +254,13 @@ cJSON*  ReadBitErrorLog(void) {
 int check_ssd(const char *ssd_path) {
     int status;
 
-    // 경로를 구성하여 실제 디바이스 경로로 변환
+    // 경로를 구성하여 마운트 경로로 변환
     char device_path[512];
 
     if (strcmp(ssd_path, "os") == 0) {
-        snprintf(device_path, sizeof(device_path), "/dev/osSSD/testfile");
+        snprintf(device_path, sizeof(device_path), "/mnt/osSSD/testfile");
     } else if (strcmp(ssd_path, "data") == 0) {
-        snprintf(device_path, sizeof(device_path), "/dev/dataSSD/testfile");
+        snprintf(device_path, sizeof(device_path), "/mnt/dataSSD/testfile");
     } else {
         printf("Error: Invalid SSD path. Use 'os' or 'data'.\n");
         return 1;
@@ -738,65 +738,3 @@ uint32_t readtBitResult(uint32_t type){
 
     return ReadBitResult(type);
 }
-
-
-// int main(int argc, char *argv[]) {
-//     if (argc < 2) {
-//         printf("Usage: %s <gpio|ssd|discrete> <os|data|in|out>\n", argv[0]);
-//         return 1;
-//     }
-
-//     const char *option = argv[1];
-
-//     int result = 0;
-
-//     if (strcmp(option, "gpio") == 0) {
-//         result = check_gpio_expander();
-//     } else if (strcmp(option, "ssd") == 0) {
-//         char *option = argv[2];
-//         if (strcmp(option, "os") == 0 ){
-//             result = check_ssd("os");
-//         }else if (strcmp(option, "data") == 0){
-//             result = check_ssd("data");
-//         }
-//     } else if (strcmp(option, "discrete") == 0) {
-//         char *option = argv[2];
-//         if (strcmp(option, "out") == 0 ){
-//             result = check_discrete_out();
-//         }else if (strcmp(option, "in") == 0){
-//             checkDiscrete_in();
-//         }
-//     } else if (strcmp(option, "ethernet") == 0){
-//         checkEthernet();
-//     } else if (strcmp(option, "gpu") == 0){
-//         checkGPU();
-//     } else if (strcmp(option, "nvram") == 0){
-//         checkNvram();
-//     } else if (strcmp(option, "rs232") == 0){
-//         checkRs232();
-//     } else if (strcmp(option, "switch") == 0){
-//         checkEthernetSwitch();
-//     } else if (strcmp(option, "temp") == 0){
-//         checkTempSensor();
-//     } else if (strcmp(option, "power") == 0){
-//         checkPowerMonitor();
-//     } else if (strcmp(option, "usb") == 0){
-//         checkUsb();
-//     } else if (strcmp(option, "usb") == 0){
-//         checkOptic();
-//     } else if (strcmp(option, "all") == 0){
-//         uint32_t type = 4;
-//         RequestBit(type);
-//     } else {
-//         printf("Invalid option. Use 'gpio', 'ssd', or 'discrete'.\n");
-//         return 1;
-//     }
-//     if (result == 0) {
-//         printf("Check completed successfully.\n");
-//     } else {
-//         printf("Check failed.\n");
-//     }
-
-//     return result;
-// }
-
