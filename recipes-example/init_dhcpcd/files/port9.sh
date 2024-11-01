@@ -22,9 +22,9 @@ mdio-tool w $INTERFACE 0x1C 0x18 0x8524
 # Write 4.2004.5 to 1 (Address 0x09)
 echo "Fixing 1000Base-X AN advertisement"
 mdio-tool w $INTERFACE 0x1C 0x19 0x2004
-mdio-tool w $INTERFACE 0x18 0x8124
+mdio-tool w $INTERFACE 0x1C 0x18 0x8124
 mdio-tool w $INTERFACE 0x1C 0x19 0x0020
-mdio-tool w $INTERFACE 0x18 0x8524
+mdio-tool w $INTERFACE 0x1C 0x18 0x8524
 
 # Enable Forwarding on ports
 echo "Enabling forwarding on ports"

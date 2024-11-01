@@ -12,6 +12,8 @@ case "$1" in
   start)
     echo "Starting dhcpcd"
     /sbin/dhcpcd
+    sleep 5
+    /usr/bin/debug-app ethernet nego disable
     ;;
   stop)
     echo "Stopping dhcpcd"

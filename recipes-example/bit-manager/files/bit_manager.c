@@ -565,8 +565,8 @@ int checkNvram() {
 int checkRs232() {
     char buffer[512];
 
-    if(ActivateRS232() == 0){
-        if(DeactivateRS232() == 0){
+    if(DeactivateRS232() == 0){
+        if(ActivateRS232() == 0){
             printf("RS232 check passed.\n");
             return 0;
         } 

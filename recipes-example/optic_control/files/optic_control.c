@@ -83,7 +83,7 @@ uint32_t getOpticTestRegister(void) {
 
 
 void setOpticPort(void) {
-    const char *scripts[] = {
+    const char *optic_scripts[] = {
         "/usr/bin/port9.sh",
         "/usr/bin/port10.sh",
         "/usr/bin/port2.sh",
@@ -91,6 +91,40 @@ void setOpticPort(void) {
         "/usr/bin/port4.sh",
         "/usr/bin/port5.sh",
         "/usr/bin/port6.sh"
+    };
+
+    size_t num_scripts = sizeof(optic_scripts) / sizeof(optic_scripts[0]);
+    uint8_t result = 0;
+
+    char *iface = checkEthernetInterface();
+    
+    if (iface == NULL) {
+        printf("No valid Ethernet interface found.\n");
+    }
+
+    for (size_t i = 0; i < num_scripts; i++) {
+        char command[256];
+        snprintf(command, sizeof(command), "%s %s", optic_scripts[i], iface);
+
+        int status = system(command);
+        if (status == -1) {
+            printf("Failed to execute %s\n", optic_scripts[i]);
+
+        } else {
+            printf("Executed %s successfully\n", optic_scripts[i]);
+        }
+    }
+}
+
+void setDefaultPort(void) {
+    const char *scripts[] = {
+        "/usr/bin/port9_default.sh",
+        "/usr/bin/port10_default.sh",
+        "/usr/bin/port2_default.sh",
+        "/usr/bin/port3_default.sh",
+        "/usr/bin/port4_default.sh",
+        "/usr/bin/port5_default.sh",
+        "/usr/bin/port6_default.sh"
     };
 
     size_t num_scripts = sizeof(scripts) / sizeof(scripts[0]);

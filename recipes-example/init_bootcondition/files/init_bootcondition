@@ -1,0 +1,46 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          debug_app_bootcondition
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Run debug-app bootcondition command after boot
+# Description:       This script runs the bootcondition command from the debug-app once after boot.
+### END INIT INFO
+
+# Path to the debug-app program
+DEBUG_APP="/usr/bin/debug-app"
+
+start() {
+    echo "Running bootcondition command from debug-app..."
+    # Run the bootcondition command
+    $DEBUG_APP bootcondition
+    echo "bootcondition command executed."
+}
+
+stop() {
+    echo "Stopping debug_app_bootcondition script... nothing to do."
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart|reload|force-reload)
+        stop
+        start
+        ;;
+    status)
+        echo "bootcondition command was executed after boot."
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

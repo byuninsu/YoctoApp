@@ -20,7 +20,11 @@ uint32_t ReadBootCondition(void);
 uint32_t getNVRAMId(void);
 uint32_t ReadBitResult(uint32_t address);
 uint32_t ReadSystemLogReasonCountCustom(uint32_t addr);
-uint32_t  WriteSystemLogTest(uint32_t resetReason, uint32_t value);
+uint32_t WriteSystemLogTest(uint32_t resetReason, uint32_t value);
+uint32_t WriteBootCondition(uint8_t bootingConditionState); 
+uint32_t ReadBootCondition(void);
+uint32_t WriteCumulativeTime(uint32_t time);
+uint32_t ReadCumulativeTime(void);
 
 
 #endif  // NVRAM_CONTROL_H

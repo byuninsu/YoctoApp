@@ -8,7 +8,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-//static char device[256];
 static const char *device = "/dev/spidev2.0";
 static uint32_t speed = 4500000;
 static uint8_t bits = 8;
@@ -34,23 +33,24 @@ typedef enum {
 // NVRAM 메모리 맵
 typedef enum {
     NVRAM_POWER_ON_COUNT_ADDR = 0x00,
-    NVRAM_INIT_COUNT_ADDR = 0x04,
+    NVRAM_MAINTENANCE_MODE_COUNT_ADDR = 0x04,
     NVRAM_NORMAL_MODE_COUNT_ADDR = 0x08,
-    NVRAM_FAIL_COUNT_ADDR = 0x0C,
-    NVRAM_RESET_COUNT_ADDR = 0x10,
-    NVRAM_UPTIME_ADDR = 0x14,
-    NVRAM_REASON_POWER_UP_ADDR = 0x18,
-    NVRAM_REASON_SOFTWARE_ADDR = 0x1C,
-    NVRAM_REASON_PUSH_BUTTON_ADDR = 0x20,
-    NVRAM_REASON_MAINTENANCE_ADDR = 0x24,
-    NVRAM_REASON_WATCHDOG_ADDR = 0x28,
-    NVRAM_ACTIVATED_TEST = 0x2C,
-    NVRAM_MAINTENANCE_MODE = 0x30,
-    NVRAM_BOOTING_CONDITION = 0x34,
-    NVRAM_BIT_RESULT_POWERON = 0x38,
-    NVRAM_BIT_RESULT_CONTINUOUS = 0x3C,
-    NVRAM_BIT_RESULT_INITIATED = 0x40,
-    NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR = 0x44
+    NVRAM_CONTAINER_START_COUNT_ADDR = 0x0C,
+    NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR = 0x10,
+    NVRAM_RESET_BY_BUTTON_COUNT_ADDR = 0x14,
+
+    NVRAM_ACTIVATED_TEST = 0x18,
+
+    NVRAM_MAINTENANCE_MODE = 0x1C,
+
+    NVRAM_BOOTING_CONDITION = 0x20,
+
+    NVRAM_BIT_RESULT_POWERON = 0x24,
+    NVRAM_BIT_RESULT_CONTINUOUS = 0x2C,
+    NVRAM_BIT_RESULT_INITIATED = 0x34,
+
+    NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR = 0x3C,
+    NVRAM_CUMULATIVE_TIME_ADDR = 0x40
 } NvramAddress;
 
     
@@ -451,6 +451,18 @@ uint32_t  ReadBootCondition(void) {
     return ReadNVRAMValue(NVRAM_BOOTING_CONDITION);
 }
 
+uint32_t  WriteCumulativeTime(uint32_t time) {
+
+    uint32_t readValue = ReadCumulativeTime();
+    uint32_t writeValue = readValue + time;
+
+    return WriteNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR, writeValue);
+}
+
+uint32_t  ReadCumulativeTime(void) {
+
+    return ReadNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR);
+}
 
 uint32_t  WriteBitResult(uint32_t address, uint32_t bitResult) {
     printf("WriteBitResult input address = 0x%08x bitResult = 0x%08x\n", address, bitResult);
@@ -485,22 +497,20 @@ uint32_t  ReadBitResult(uint32_t address) {
     return 1;
 }
 
-
-
 uint32_t   ReadSystemLog(uint32_t nvramAddress) {
     switch (nvramAddress) {
         case 2:
             return ReadNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR);
         case 3:
-            return ReadNVRAMValue(NVRAM_INIT_COUNT_ADDR);
+            return ReadNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR);
         case 4:           
             return ReadNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR);
         case 5:           
-            return ReadNVRAMValue(NVRAM_FAIL_COUNT_ADDR);
+            return ReadNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR);
         case 6:           
-            return ReadNVRAMValue(NVRAM_RESET_COUNT_ADDR);
+            return ReadNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR);
         case 7:          
-            return ReadNVRAMValue(NVRAM_UPTIME_ADDR);
+            return ReadNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR);
         case 8:          
             return ReadNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR);
         case 12:          
@@ -529,15 +539,15 @@ uint32_t  WriteSystemLogTest(uint32_t resetReason, uint32_t value) {
             case 2:                 
                  return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, value);
             case 3:                
-                 return WriteNVRAMValue(NVRAM_INIT_COUNT_ADDR, value);
+                 return WriteNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, value);
             case 4:                
                  return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, value);
             case 5:                 
-                 return WriteNVRAMValue(NVRAM_FAIL_COUNT_ADDR, value);
+                 return WriteNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR, value);
             case 6:                
-                 return WriteNVRAMValue(NVRAM_RESET_COUNT_ADDR, value);
+                 return WriteNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, value);
             case 7: 
-                 return WriteNVRAMValue(NVRAM_UPTIME_ADDR, value); 
+                 return WriteNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, value); 
             case 12: 
                  return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, value);
             default:
@@ -554,15 +564,15 @@ uint32_t  WriteSystemLogReasonCount(uint32_t resetReason) {
             case 2:                 
                  return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, writeValue);
             case 3:                
-                 return WriteNVRAMValue(NVRAM_INIT_COUNT_ADDR, writeValue);
+                 return WriteNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, writeValue);
             case 4:                
                  return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, writeValue);
             case 5:                 
-                 return WriteNVRAMValue(NVRAM_FAIL_COUNT_ADDR, writeValue);
+                 return WriteNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR, writeValue);
             case 6:                
-                 return WriteNVRAMValue(NVRAM_RESET_COUNT_ADDR, writeValue);
+                 return WriteNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, writeValue);
             case 7: 
-                 return WriteNVRAMValue(NVRAM_UPTIME_ADDR, writeValue);
+                 return WriteNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, writeValue);
             case 8: 
                  return WriteNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, writeValue);  
             case 12: 

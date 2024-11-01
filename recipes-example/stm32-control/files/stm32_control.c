@@ -6,6 +6,7 @@
 #include <linux/spi/spidev.h>
 #include <string.h>
 #include "stm32_control.h"
+#include "nvram_control.h"
 
 static const char *device = "/dev/spidev1.0";
 static uint32_t speed = 1000000;
@@ -140,6 +141,59 @@ uint8_t sendOnlyOne(stm32_spi_reg command) {
         fd = -1;     
     }
     return 0;
+}
+
+void sendBootCondition(void) {
+
+    spiInit();
+
+    uint8_t tx_buf[2] = { STM32_SPI_BOOTCONDITION, 0x00 };
+	uint8_t tx_buf2[1] = { 0xFF };
+    uint8_t spi_rx_buf[1] = { 0 }; 
+
+    struct spi_ioc_transfer xfer[2] = {
+        {
+            .tx_buf = (uintptr_t)tx_buf,
+            .rx_buf = 0,
+            .len = sizeof(tx_buf),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        },
+        {
+            .tx_buf = (uintptr_t)tx_buf2,
+            .rx_buf = (uintptr_t)spi_rx_buf,
+            .len = sizeof(tx_buf2),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        }
+    };
+
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
+        perror("Failed to send command");
+    }
+
+	usleep(10000);
+
+	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+        perror("Failed to receive data");
+    }
+
+    //rx_buf 내용 출력
+    printf("rx_buf[0]: %02X\n", spi_rx_buf[0]);
+
+    //MCU로 인한 재부팅처리 NVRAM에 기록
+    if(spi_rx_buf[0] == 0x01){
+        WriteBootCondition(0x03);
+    } else {
+        WriteBootCondition(0x02);
+    }
+    
+    if (fd != -1) {
+        close(fd);   
+        fd = -1;     
+    }
 }
 
 

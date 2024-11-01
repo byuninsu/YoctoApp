@@ -12,11 +12,19 @@ SRC_URI = "file://init_dhcpcd \
            file://port5.sh \
            file://port6.sh \
            file://port9.sh \
-           file://port10.sh"
+           file://port10.sh \
+           file://port2_default.sh \
+           file://port3_default.sh \
+           file://port4_default.sh \
+           file://port5_default.sh \
+           file://port6_default.sh \
+           file://port9_default.sh \
+           file://port10_default.sh"
 
 do_install() {
     install -d ${D}${sysconfdir}/init.d/
     install -m 0755 ${WORKDIR}/init_dhcpcd ${D}${sysconfdir}/init.d/dhcpcd
+
 
     install -d ${D}${bindir}/
     install -m 0755 ${WORKDIR}/port2.sh ${D}${bindir}/port2.sh
@@ -26,11 +34,19 @@ do_install() {
     install -m 0755 ${WORKDIR}/port6.sh ${D}${bindir}/port6.sh
     install -m 0755 ${WORKDIR}/port9.sh ${D}${bindir}/port9.sh
     install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/port10.sh
+    install -m 0755 ${WORKDIR}/port2.sh ${D}${bindir}/port2_default.sh
+    install -m 0755 ${WORKDIR}/port3.sh ${D}${bindir}/port3_default.sh
+    install -m 0755 ${WORKDIR}/port4.sh ${D}${bindir}/port4_default.sh
+    install -m 0755 ${WORKDIR}/port5.sh ${D}${bindir}/port5_default.sh
+    install -m 0755 ${WORKDIR}/port6.sh ${D}${bindir}/port6_default.sh
+    install -m 0755 ${WORKDIR}/port9.sh ${D}${bindir}/port9_default.sh
+    install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/port10_default.sh
 }
 
 RDEPENDS_${PN} += "dhcpcd"
 
 INITSCRIPT_NAME = "dhcpcd"
 INITSCRIPT_PARAMS = "defaults"
+
 inherit update-rc.d
 

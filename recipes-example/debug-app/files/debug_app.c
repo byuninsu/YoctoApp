@@ -91,6 +91,30 @@ int main(int argc, char *argv[]) {
             int port = atoi(argv[3]);
             int value = atoi(argv[4]);
             setEthernetPort(port, value);
+        } else if (strcmp(argv[2], "nego") ==0 ) {
+            char* otherIface = checkEthernetInterface();
+            char* iface;
+
+            if(strcmp( otherIface, "eth0") == 0 ){
+                iface = "eth1";
+            } else {
+                iface = "eth0";
+            }
+            char command[256];
+            if (strcmp(argv[3], "disable") ==0){
+                snprintf(command, sizeof(command), "/usr/sbin/ethtool -s %s speed 1000 duplex full autoneg off", iface);
+                printf("Disabling auto-negotiation on %s\n", iface);
+
+            } else if (strcmp(argv[3], "enable") ==0) {
+                snprintf(command, sizeof(command), "/usr/sbin/ethtool -s %s autoneg on", iface);
+                printf("Enabling auto-negotiation on %s\n", iface);
+
+            }
+            int status = system(command);
+            if (status == -1) {
+                perror("Failed to execute ethtool command");
+                return 1;
+            }
         }
     }
 
@@ -150,7 +174,10 @@ else if (strcmp(argv[1], "nvram") == 0) {
             uint32_t addr = (uint32_t)strtoul(argv[4], NULL, 0); 
             uint32_t value = (uint32_t)strtoul(argv[5], NULL, 0);
             WriteSystemLogReasonCountCustom(addr, value);
-        }else {
+        } else if (strcmp(argv[3], "time") == 0) {
+            uint32_t time = (uint32_t)strtoul(argv[4], NULL, 0); 
+            WriteCumulativeTime(time);
+        } else {
             fprintf(stderr, "Invalid write type: %s\n", argv[3]);
         }
     } else if (strcmp(argv[2], "read") == 0) {
@@ -172,7 +199,10 @@ else if (strcmp(argv[1], "nvram") == 0) {
             uint32_t result = ReadSystemLogReasonCountCustom(addr);
             printf("Reading systemLog Value at 0x%08x: %u\n", addr, result); 
 
-        }else {
+        } else if (strcmp(argv[3], "time") == 0) {
+            uint32_t result = ReadCumulativeTime();
+            printf("Reading CumulativeTime Value: %u\n", result); 
+        } else {
             fprintf(stderr, "Invalid read type: %s\n", argv[3]);
         }
     } else {
@@ -241,6 +271,11 @@ else if (strcmp(argv[1], "nvram") == 0) {
         }
     }
 
+    // Handling 'bootcondition' commands
+    else if (strcmp(argv[1], "bootcondition") == 0) {
+        sendBootCondition();
+    }
+
     // Handling 'watchdog' commands
     else if (strcmp(argv[1], "watchdog") == 0) {
         if (argc < 3) {
@@ -257,21 +292,26 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } 
     }
 
-    // Handling 'optic' commands
-    else if (strcmp(argv[1], "optic") == 0) {
-        if (argc < 2) {
-            fprintf(stderr, "Usage: %s optic <get/set>\n", argv[0]);
-            return 1;
-        }
-
-        if (strcmp(argv[2], "test") == 0) {
-            getOpticTestRegister();
-        } 
-
-        if (strcmp(argv[2], "set") == 0) {
-            setOpticPort();
-        } 
+// Handling 'optic' commands
+else if (strcmp(argv[1], "optic") == 0) {
+    if (argc < 3) {
+        fprintf(stderr, "Usage: %s optic <test/set/default>\n", argv[0]);
+        return 1;
     }
+
+    if (strcmp(argv[2], "test") == 0) {
+        getOpticTestRegister();
+    } 
+    else if (strcmp(argv[2], "set") == 0) {  
+        setOpticPort();
+    }
+    else if (strcmp(argv[2], "default") == 0) {  
+        setDefaultPort();
+    } else {
+        fprintf(stderr, "Invalid optic command. Usage: %s optic <test/set/default>\n", argv[0]);
+        return 1;
+    }
+}
 
         // Handling 'stp' commands
     else if (strcmp(argv[1], "stp") == 0) {
