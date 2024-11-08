@@ -292,26 +292,26 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } 
     }
 
-// Handling 'optic' commands
-else if (strcmp(argv[1], "optic") == 0) {
-    if (argc < 3) {
-        fprintf(stderr, "Usage: %s optic <test/set/default>\n", argv[0]);
-        return 1;
-    }
+    // Handling 'optic' commands
+    else if (strcmp(argv[1], "optic") == 0) {
+        if (argc < 3) {
+            fprintf(stderr, "Usage: %s optic <test/set/default>\n", argv[0]);
+            return 1;
+        }
 
-    if (strcmp(argv[2], "test") == 0) {
-        getOpticTestRegister();
-    } 
-    else if (strcmp(argv[2], "set") == 0) {  
-        setOpticPort();
+        if (strcmp(argv[2], "test") == 0) {
+            getOpticTestRegister();
+        } 
+        else if (strcmp(argv[2], "set") == 0) {  
+            setOpticPort();
+        }
+        else if (strcmp(argv[2], "default") == 0) {  
+            setDefaultPort();
+        } else {
+            fprintf(stderr, "Invalid optic command. Usage: %s optic <test/set/default>\n", argv[0]);
+            return 1;
+        }
     }
-    else if (strcmp(argv[2], "default") == 0) {  
-        setDefaultPort();
-    } else {
-        fprintf(stderr, "Invalid optic command. Usage: %s optic <test/set/default>\n", argv[0]);
-        return 1;
-    }
-}
 
         // Handling 'stp' commands
     else if (strcmp(argv[1], "stp") == 0) {

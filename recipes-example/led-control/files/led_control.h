@@ -10,6 +10,7 @@ uint32_t  setGpioConf(uint8_t port, uint8_t value);
 uint32_t  getConfState(uint8_t port, uint8_t *value);
 uint32_t  setDiscreteOut(uint8_t gpio, uint16_t value);
 uint8_t  getDiscreteOut(uint8_t gpio);
+uint16_t  getDiscreteOutAll(void);
 uint32_t  setDiscreteConf(uint8_t port, uint8_t value);
 uint32_t  getDiscreteConf(uint8_t port, uint8_t *value);
 

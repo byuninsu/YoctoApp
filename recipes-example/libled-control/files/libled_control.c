@@ -310,6 +310,38 @@ uint8_t getDiscreteOut(uint8_t gpio) {
     return gpioState;
 }
 
+uint16_t getDiscreteOutAll(void) {
+    uint16_t gpioState = 0;
+    unsigned char reg0Value = 0;
+    unsigned char reg1Value = 0;
+
+    // I2C 초기화
+    i2cInit(DISCRETE_OUT_ADDR);
+
+    // 첫 번째 8비트 (GPIO 0~7) 읽기
+    if (i2c_read_byte(GPIO_EXPENDER_00P, &reg0Value) != 0) {
+        fprintf(stderr, "Failed to read from I2C device (GPIO 0~7)\n");
+        i2cClose();
+        return 0xFFFF; // 에러 표시로 모두 1을 반환
+    }
+
+    // 두 번째 8비트 (GPIO 8~15) 읽기
+    if (i2c_read_byte(GPIO_EXPENDER_01P, &reg1Value) != 0) {
+        fprintf(stderr, "Failed to read from I2C device (GPIO 8~15)\n");
+        i2cClose();
+        return 0xFFFF; // 에러 표시로 모두 1을 반환
+    }
+
+    // 16비트로 결합
+    gpioState = (reg1Value << 8) | reg0Value;
+
+    printf("Current GPIO states: 0x%04X\n", gpioState);
+
+    i2cClose();
+
+    return gpioState;
+}
+
 uint32_t setDiscreteConf(uint8_t port, uint8_t value) {
 
     printf("setDiscreteConf inpu value : %d\n", value);
