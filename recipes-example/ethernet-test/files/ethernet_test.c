@@ -6,62 +6,183 @@
 #include <pthread.h>
 #include <termios.h>
 #include <fcntl.h>
+#include <sys/socket.h>
 
 #include "discrete_in.h"
 #include "led_control.h"
 
-#define SERVER_PORT 8080        // Listening port
+#define RECEIVE_PORT 8080        // Listening port
+#define SEND_PORT 8060        // Sending port
 #define BUFFER_SIZE 1024
+#define OPCODE_DISCRETE_OUT "CSRICR0001"
+#define OPCODE_SIZE 10  // OPCode 크기 정의
+#define MAX_PARM_SIZE 256  // Parm 최대 크기 정의
+#define BROADCAST_IP "255.255.255.255"  // 브로드캐스트 주소
 
-#define STX_VALUE 0x56
-#define DLC_VALUE 0x15
-#define STATUS_READY 0x00
-#define STATUS_RUN 0x01
-#define EOT_VALUE 0x4F
-#define DATA_TYPE_DISCRETE_IN 0x01
-#define DATA_TYPE_DISCRETE_OUT 0x02
-#define DATA_TYPE_RS232 0x03
-
+// 메시지 구조체 정의
 typedef struct {
-    uint8_t STX;                // 1 Byte
-    uint8_t DLC;                // 1 Byte
-    uint8_t Status;             // 1 Byte
-    uint8_t Data[15];           // 15 Bytes
-    uint8_t CRC[2];             // 2 Bytes
-    uint8_t EOT;                // 1 Byte
-} Packet;
+    char OPCode[OPCODE_SIZE];       // OPCode (sizeof(char) * 10)
+    uint16_t SequenceCount;         // SequenceCount (2 byte)
+    uint16_t SizeofParm;            // SizeofParm (2 byte)
+    char Parm[MAX_PARM_SIZE];       // Parm (sizeof(char) * SizeofParm 크기)
+} Message;
 
-//함수 프로토타입 추가
-Packet parseSendPacket(void);
-void initialize_packet(Packet *packet, uint8_t status, uint8_t *data, size_t data_len);
-uint16_t crc16_ccitt(uint8_t *data, size_t len);
-uint16_t readDiscreteIn(void);
-int broadSocketSetup(const char* ipAddr);
-// void *broadcastThreadStart(void *arg);
+// 함수 프로토타입 추가
+void processingDiscreteOut(const char *Parm, uint16_t sequenceCount);
+int init_recv_socket();
+int init_send_socket();
+void *receive_and_parse_message(void *arg);
+void start_broadcast();
+void stop_broadcast();
+uint16_t parse_binary_string(const char *binary_str);
+void uint16_to_binary_string(uint16_t value, char *output, size_t output_size);
+void broadcastSendMessage(const Message *message); 
+
 
 // 전역 변수와 플래그 선언
-int serverSocket = -1;
-int clientSocket = -1;
-int broadSocket = -1;
-int running = 1; // 스레드 제어 플래그
+int recv_sockfd = -1;
+int send_sockfd = -1;
 int keep_running = 1;
 int uart_fd;
-pthread_t broadcastThread;
-struct sockaddr_in broadcastAddr;
+pthread_t receiveThread;
+struct sockaddr_in servaddr, cliaddr;
+
+int init_recv_socket() {
+    int broadcastEnable = 1;
+    recv_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (recv_sockfd < 0) {
+        perror("Receive socket creation failed");
+        return -1;
+    }
+
+    if (setsockopt(recv_sockfd, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable)) < 0) {
+        perror("setsockopt failed");
+        close(recv_sockfd);
+        return -1;
+    }
+
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = INADDR_ANY;
+    servaddr.sin_port = htons(RECEIVE_PORT);
+
+    if (bind(recv_sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+        perror("bind failed");
+        close(recv_sockfd);
+        return -1;
+    }
+
+    printf("Receive socket initialized and bound to port %d\n", RECEIVE_PORT);
+    return 0;
+}
+
+int init_send_socket() {
+    send_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (send_sockfd < 0) {
+        perror("Send socket creation failed");
+        return -1;
+    }
+
+    int broadcastEnable = 1;
+    if (setsockopt(send_sockfd, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable)) < 0) {
+        perror("setsockopt for broadcast failed");
+        close(send_sockfd);
+        return -1;
+    }
+
+    printf("Send socket initialized\n");
+    return 0;
+}
 
 
-// 패킷 초기화 함수
-void initialize_packet(Packet *packet, uint8_t status, uint8_t *data, size_t data_len) {
-    packet->STX = STX_VALUE;
-    packet->DLC = DLC_VALUE;
-    packet->Status = status;
-    memset(packet->Data, 0, 15);
-    memcpy(packet->Data, data, data_len);
+// 데이터 수신 및 파싱 함수 (무한 대기)
+void *receive_and_parse_message(void *arg) {
+    socklen_t len = sizeof(cliaddr);
+    Message msg;
 
-    uint16_t crc = crc16_ccitt(packet->Data, 15);
-    packet->CRC[0] = (crc >> 8) & 0xFF;
-    packet->CRC[1] = crc & 0xFF;
-    packet->EOT = EOT_VALUE;
+    printf("Waiting to receive messages...\n");
+
+    while (keep_running) {  // 무한 대기 루프
+        // 수신 버퍼 초기화
+        memset(&msg, 0, sizeof(msg));
+
+        // 데이터 수신 (recvfrom은 기본적으로 블로킹 모드)
+        ssize_t n = recvfrom(recv_sockfd, &msg, sizeof(msg), 0, (struct sockaddr *)&cliaddr, &len);
+        if (n < 0) {
+            perror("recvfrom failed");
+            continue;
+        }
+
+        // 데이터 파싱 및 출력
+        printf("----Received message----\n");
+        printf("OPCode: %.*s\n", OPCODE_SIZE, msg.OPCode);
+        printf("SequenceCount: %u\n", ntohs(msg.SequenceCount));
+        printf("SizeofParm: %u\n", ntohs(msg.SizeofParm));
+        printf("Parm: %.*s\n", ntohs(msg.SizeofParm), msg.Parm);
+        printf("------------------------\n");
+
+        if (memcmp(msg.OPCode, OPCODE_DISCRETE_OUT, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_DISCRETE_OUT message\n");
+            processingDiscreteOut(msg.Parm, msg.SequenceCount);
+        }
+    }
+}
+
+// Discrete Out 처리 함수
+void processingDiscreteOut(const char Parm[], uint16_t sequenceCount) {
+    printf("processingDiscreteOut ++\n");
+
+    uint16_t parsedParm = parse_binary_string(Parm);
+
+    int result = setDiscreteOutAll(parsedParm);
+    if (result != 0) {
+        printf("Failed to set Discrete Out\n");
+    } else {
+        printf("Successfully set Discrete Out\n");
+
+        Message message;
+        strncpy(message.OPCode, OPCODE_DISCRETE_OUT, OPCODE_SIZE);
+        
+        // sequenceCount에 1을 더한 값을 네트워크 바이트 순서로 변환 후 할당
+        sequenceCount++;
+        message.SequenceCount = htons(sequenceCount);
+
+        // getDiscreteOutAll() 값을 2진수 문자열로 변환
+        uint16_t value = getDiscreteOutAll();
+        char binary_string[17];  // 16자리 이진수 + null 문자
+        uint16_to_binary_string(value, binary_string, sizeof(binary_string));
+
+        // message.Parm에 이진수 문자열을 복사
+        strncpy(message.Parm, binary_string, MAX_PARM_SIZE);
+
+        // Parm의 실제 크기를 계산하여 SizeofParm에 저장
+        message.SizeofParm = htons(strlen(binary_string));
+
+        broadcastSendMessage(&message);
+    }
+}
+
+// 브로드캐스트 메시지 전송 함수
+void broadcastSendMessage(const Message *message) {
+    struct sockaddr_in broadcastAddr;
+    memset(&broadcastAddr, 0, sizeof(broadcastAddr));
+    broadcastAddr.sin_family = AF_INET;
+    broadcastAddr.sin_port = htons(SEND_PORT);
+    broadcastAddr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
+
+    printf("----Send message----\n");
+    printf("OPCode: %.*s\n", OPCODE_SIZE, message->OPCode);
+    printf("SequenceCount: %u\n", ntohs(message->SequenceCount));
+    printf("SizeofParm: %u\n", ntohs(message->SizeofParm));
+    printf("Parm: %.*s\n", ntohs(message->SizeofParm), message->Parm);
+    printf("--------------------\n");
+
+    int sendLen = sendto(send_sockfd, message, sizeof(Message), 0, (struct sockaddr*)&broadcastAddr, sizeof(broadcastAddr));
+    if (sendLen < 0) {
+        perror("Broadcast message send failed");
+    } else {
+        printf("Broadcast message sent.\n");
+    }
 }
 
 
@@ -84,374 +205,32 @@ int configure_uart(int fd) {
     return 0;
 }
 
-// 일회성 브로드캐스트 메시지 전송 함수
-void broadcastSendMessage(const char* ipAddr, const char* message) {
-    // 브로드캐스트 소켓 초기화
-    if (broadSocketSetup(ipAddr) != 0) {
-        fprintf(stderr, "Failed to setup broadcast socket\n");
-        return;
-    }
 
-    // 메시지 전송
-    int sendLen = sendto(broadSocket, message, strlen(message), 0, 
-                         (struct sockaddr*)&broadcastAddr, sizeof(broadcastAddr));
-    if (sendLen < 0) {
-        perror("Broadcast message send failed");
-    } else {
-        printf("Broadcast message sent: %s\n", message);
-    }
-
-    // 소켓 닫기
-    close(broadSocket);
-    broadSocket = -1;  // 소켓 상태 초기화
-}
-
-int broadSocketSetup(const char* ipAddr) {
-    printf("Setting up broadcast socket with IP: %s\n", ipAddr);
-    broadSocket = socket(AF_INET, SOCK_DGRAM, 0);
-    if (broadSocket < 0) {
-        perror("broadSocket creation failed");
-        return 1;
-    }
-
-    int broadcastEnable = 1;
-    if (setsockopt(broadSocket, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable)) < 0) {
-        perror("setsockopt failed");
-        close(broadSocket);
-        return 1;
-    }
-
-    memset(&broadcastAddr, 0, sizeof(broadcastAddr));
-    broadcastAddr.sin_family = AF_INET;
-    broadcastAddr.sin_port = htons(SERVER_PORT);
-    broadcastAddr.sin_addr.s_addr = inet_addr(ipAddr);
-
-    printf("Broadcast socket setup completed.\n");
-
-    return 0;
-}
-
-
-// 브로드캐스트 스레드 함수
-void *broadcastThreadStart(void *arg) {
-    printf("Broadcast thread started.\n");
-
-    printf("Entering broadcast loop. keep_running = %d\n", keep_running);
-
-    while (keep_running) {
-        printf("Calling parseSendPacket...\n");
-
-        Packet packet = parseSendPacket();
-
-         printf("Sending broadcast message...\n");
-        int sendLen = sendto(broadSocket, &packet, sizeof(Packet), 0,
-                             (struct sockaddr *)&broadcastAddr, sizeof(broadcastAddr));
-
-        printf("DATA: ");
-        for (int i = 0; i < 15; i++) {
-            printf("%02x ", packet.Data[i]);
-        }
-        printf("\n");
-
-        if (sendLen < 0) {
-            perror("Broadcast message send failed");
-            break;
-        }
-        printf("Broadcast message sent.\n");
-        usleep(1000000); // 1초 대기
-
-         printf("Loop iteration complete. keep_running = %d\n", keep_running);
-    }
-
-    close(broadSocket); // 스레드 종료 시 소켓 닫기
-    broadSocket = -1;
-    printf("Broadcast thread ending.\n");
-    return NULL;
-}
-
-
-// 브로드캐스트 시작 함수
-void start_broadcast(const char* ipAddr) {
-    printf("Starting broadcast with IP: %s\n", ipAddr);
-    
-    if (broadSocketSetup(ipAddr) != 0) {
-        fprintf(stderr, "Failed to setup broadcast socket\n");
-        return;
-    }
+void start_broadcast(void) {
+    init_recv_socket();
+    init_send_socket();
 
     keep_running = 1;
-
-    int result = pthread_create(&broadcastThread, NULL, broadcastThreadStart, NULL);
-    pthread_join(broadcastThread, NULL);
-
-    if (result != 0) {
-        fprintf(stderr, "Error creating broadcast thread: %d\n", result);
-    } else {
-        printf("Broadcast thread created successfully.\n");
+    if (pthread_create(&receiveThread, NULL, receive_and_parse_message, NULL) != 0) {
+        perror("Failed to create receive thread");
+        close(recv_sockfd);
+        close(send_sockfd);
+        return;
     }
+
+    pthread_join(receiveThread, NULL);
 }
 
-// 브로드캐스트 중지 함수
+// 리시브 중지 함수
 void stop_broadcast() {
-    printf("Stopping broadcast.\n");
+    printf("Stopping receive.\n");
     keep_running = 0;
-    if (broadSocket != -1) {
-        pthread_join(broadcastThread, NULL);
-        printf("Broadcast thread has stopped.\n"); 
+    if (recv_sockfd != -1) {
+        pthread_join(receiveThread, NULL);
+        printf("receive_and_parse_message thread has stopped.\n"); 
     }
-}
-
-Packet parseSendPacket(void) { 
-
-    printf("Start parseSendPacket ++\n");
-
-    Packet packet;
-    uint8_t data[15];
-    char buffer[BUFFER_SIZE];
-    char sendRS232buffer[8];
-    int bytes_read;
-
-    // Uart 초기화
-    if (configure_uart(uart_fd) < 0) {
-        fprintf(stderr, "UART init failed\n");
-        return packet;  // 실패 시 초기화된 빈 패킷 반환
-    }
-
-    printf("UART init success ");
-
-    //discrete-in value 가져오기
-    uint16_t discreteInValue = readDiscreteIn();
-    printf("Discrete IN value: %04x\n", discreteInValue);
-
-    //discrete-out value 가져오기
-    uint16_t discreteOutValue = getDiscreteOutAll();
-    printf("Discrete OUT value: %04x\n", discreteOutValue);
-
-    // RS232 읽기
-    bytes_read = read(uart_fd, buffer, sizeof(buffer) - 1);
-    if (bytes_read > 0) {
-        buffer[bytes_read] = '\0'; // Null-terminate the buffer
-        
-        //sendRS232buffer 0으로 초기화
-        memset(sendRS232buffer, 0, 8);
-        //읽어온 내용 복사
-        strcpy(sendRS232buffer, buffer);
-
-        printf("RS232 read data: %s\n", sendRS232buffer);
-    } else if (bytes_read < 0) {
-        //sendRS232buffer 0으로 초기화
-        memset(sendRS232buffer, 0, 8);
-    }
-
-    data[0] = DATA_TYPE_DISCRETE_IN;
-    data[1] = (discreteInValue >> 8) & 0xFF;
-    data[2] = discreteInValue & 0xFF;
-    data[3] = DATA_TYPE_DISCRETE_OUT;
-    data[4] = (discreteOutValue >> 8) & 0xFF;
-    data[5] = discreteOutValue & 0xFF;
-    data[6] = DATA_TYPE_RS232;
-
-    memcpy(&data[7], sendRS232buffer, bytes_read > 8 ? 8 : bytes_read);
-    
-    printf("Packet data ready  \n");
-
-    initialize_packet(&packet, STATUS_RUN, data, 15);
-
-    printf("End parseSendPacket --\n");
-    return packet;
-}
-
-// 서버의 수신 및 에코 스레드 함수
-void* receive_and_echo(void* arg) {
-    char buffer[BUFFER_SIZE];
-    int recvLen;
-
-    while (running) {
-        recvLen = recv(clientSocket, buffer, BUFFER_SIZE - 1, 0);
-        if (recvLen <= 0) {
-            if (recvLen == 0) {
-                printf("Client disconnected.\n");
-            } else {
-                perror("Receive failed");
-            }
-            break;
-        }
-        buffer[recvLen] = '\0';
-        printf("Received from client: %s\n", buffer);
-
-        if (send(clientSocket, buffer, recvLen, 0) < 0) {
-            perror("Send failed");
-            break;
-        } else {
-            printf("Echoed back to client: %s\n", buffer);
-        }
-    }
-    return NULL;
-}
-
-// 서버 시작 함수
-void start_server() {
-    struct sockaddr_in serverAddr, clientAddr;
-    pthread_t recvThread;
-    socklen_t addrSize;
-
-    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (serverSocket < 0) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-    printf("Server socket created.\n");
-
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(SERVER_PORT);
-    serverAddr.sin_addr.s_addr = INADDR_ANY;
-
-    if (bind(serverSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        perror("Socket bind failed");
-        close(serverSocket);
-        exit(EXIT_FAILURE);
-    }
-    printf("Socket bound to port %d.\n", SERVER_PORT);
-
-    if (listen(serverSocket, 5) < 0) {
-        perror("Socket listen failed");
-        close(serverSocket);
-        exit(EXIT_FAILURE);
-    }
-    printf("Server listening on port %d.\n", SERVER_PORT);
-
-    addrSize = sizeof(clientAddr);
-    clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddr, &addrSize);
-    if (clientSocket < 0) {
-        perror("Client accept failed");
-        close(serverSocket);
-        exit(EXIT_FAILURE);
-    }
-    printf("Client connected.\n");
-
-    running = 1;
-    pthread_create(&recvThread, NULL, receive_and_echo, NULL);
-    pthread_join(recvThread, NULL);
-
-    close(clientSocket);
-    printf("Client connection closed.\n");
-}
-
-// 서버 중지 함수
-void stop_server() {
-    running = 0;
-    if (clientSocket >= 0) {
-        close(clientSocket);
-        clientSocket = -1;
-        printf("Client connection closed.\n");
-    }
-    if (serverSocket >= 0) {
-        close(serverSocket);
-        serverSocket = -1;
-        printf("Server socket closed.\n");
-    }
-}
-
-// 클라이언트 송신 스레드 함수
-void* client_send(void* arg) {
-    while (running) {
-        const char* message = "Hello from Jetson client!";
-        send(clientSocket, message, strlen(message), 0);
-        printf("Sent to server: %s\n", message);
-         usleep(3000000);// 3초마다 메시지 전송
-    }
-    return NULL;
-}
-
-// 클라이언트 수신 및 에코 스레드 함수
-void* client_receive(void* arg) {
-    char buffer[BUFFER_SIZE];
-    int result;
-
-    while (running) {
-        result = recv(clientSocket, buffer, BUFFER_SIZE - 1, 0);
-        if (result > 0) {
-            buffer[result] = '\0';
-            printf("Received from server: %s\n", buffer);
-
-            // 받은 데이터를 서버에 에코로 다시 전송
-            // if (send(clientSocket, buffer, result, 0) < 0) {
-            //     perror("Echo send failed");
-            //     running = 0;
-            //     break;
-            // } else {
-            //     printf("Echoed back to server: %s\n", buffer);
-            // }
-        } else {
-            printf("Disconnected from server.\n");
-            running = 0; // 서버가 연결을 끊으면 클라이언트도 종료
-            break;
-        }
-    }
-    return NULL;
-}
-
-// 클라이언트 시작 함수
-void start_client(const char* server_ip) {
-    struct sockaddr_in serverAddr;
-    pthread_t sendThread, recvThread;
-
-    clientSocket = socket(AF_INET, SOCK_STREAM, 0);
-    if (clientSocket < 0) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(SERVER_PORT);
-    inet_pton(AF_INET, server_ip, &serverAddr.sin_addr);
-
-    printf("Connecting to server at %s:%d...\n", server_ip, SERVER_PORT);
-    if (connect(clientSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
-        perror("Connection to server failed");
-        close(clientSocket);
-        exit(EXIT_FAILURE);
-    }
-    printf("Connected to server.\n");
-
-    running = 1;
-    pthread_create(&sendThread, NULL, client_send, NULL);
-    pthread_create(&recvThread, NULL, client_receive, NULL);
-
-    pthread_join(sendThread, NULL);
-    pthread_join(recvThread, NULL);
-}
-
-// 클라이언트 중지 함수
-void stop_client() {
-    running = 0;
-    if (clientSocket >= 0) {
-        close(clientSocket);
-        clientSocket = -1;
-        printf("Client socket closed.\n");
-    }
-}
-
-// CRC 계산 함수
-uint16_t crc16_ccitt(uint8_t *data, size_t len)
-{
-    uint16_t crc = 0xFFFF;
-    size_t i, j;
-
-    for (i = 0; i < len; i++)
-    {
-        crc ^= (uint16_t)data[i] << 8;
-        for (j = 0; j < 8; j++)
-        {
-            if (crc & 0x8000)
-            {
-                crc = (crc << 1) ^ 0x1021;
-            } else {
-                crc <<= 1;
-            }
-        }
-    }
-    return crc;
+    close(recv_sockfd);
+    close(send_sockfd);
 }
 
 uint16_t readDiscreteIn(void){
@@ -465,52 +244,56 @@ uint16_t readDiscreteIn(void){
     return readValue;
 }
 
+uint16_t parse_binary_string(const char *binary_str) {
+    uint16_t result = 0;
+
+    // 문자열 길이 확인 및 최대 16비트 길이만큼만 처리
+    size_t len = strlen(binary_str);
+    if (len > 16) {
+        fprintf(stderr, "Warning: binary string exceeds 16 bits, truncating to 16 bits.\n");
+        len = 16;
+    }
+
+    for (size_t i = 0; i < len; i++) {
+        if (binary_str[i] == '1') {
+            result |= (1 << (len - 1 - i));  // 각 비트를 왼쪽에서부터 채웁니다.
+        } else if (binary_str[i] != '0') {
+            fprintf(stderr, "Error: Invalid character in binary string: %c\n", binary_str[i]);
+            return 0;  // 잘못된 입력에 대해 0을 반환할 수 있음
+        }
+    }
+
+    return result;
+}
+
+void uint16_to_binary_string(uint16_t value, char *output, size_t output_size) {
+    // output_size가 17이어야 16비트 + null 문자 ('\0') 를 담을 수 있음
+    if (output_size < 17) {
+        fprintf(stderr, "Output buffer is too small.\n");
+        return;
+    }
+
+    output[16] = '\0';  // Null terminator 추가
+
+    for (int i = 15; i >= 0; i--) {
+        output[15 - i] = (value & (1 << i)) ? '1' : '0';
+    }
+}
+
 int main(int argc, char *argv[]) {
     if (argc < 3) {
-        printf("Usage: %s <server/client> <start/stop> [server_ip for client mode]\n", argv[0]);
+        printf("Usage: %s <broadcast> <start/stop>\n", argv[0]);
         return 1;
     }
 
-    if (strcmp(argv[1], "server") == 0) {
+    if (strcmp(argv[1], "broadcast") == 0) {
         if (strcmp(argv[2], "start") == 0) {
-            start_server();
-        } else if (strcmp(argv[2], "stop") == 0) {
-            stop_server();
-        } else {
-            printf("Invalid command for server. Use 'start' or 'stop'.\n");
-        }
-    } else if (strcmp(argv[1], "client") == 0) {
-        if (strcmp(argv[2], "start") == 0) {
-            if (argc < 4) {
-                printf("Please specify the server IP for client mode.\n");
-                return 1;
-            }
-            start_client(argv[3]);
-        } else if (strcmp(argv[2], "stop") == 0) {
-            stop_client();
-        } else {
-            printf("Invalid command for client. Use 'start' or 'stop'.\n");
-        }
-    } else if (strcmp(argv[1], "broadcast") == 0) {
-        if (strcmp(argv[2], "start") == 0) {
-            if (argc < 4) {
-                printf("Please specify the broadcast IP for broadcast start.\n");
-                return 1;
-            }
-            start_broadcast(argv[3]);
+            start_broadcast();
         } else if (strcmp(argv[2], "stop") == 0) {
             stop_broadcast();
-        } else if (strcmp(argv[2], "send")== 0) {
-            if (argc < 5) {
-            printf("Usage: %s broadcast send <IP> <Message>\n", argv[0]);
-            return 1;
-        }
-            broadcastSendMessage(argv[3],argv[4]);
         } else {
-            printf("Invalid command for broadcast. Use 'start' or 'stop'.\n");
+            printf("Invalid command. Use 'start' or 'stop'.\n");
         }
-    } else {
-        printf("Invalid mode. Use 'broadcast start <IP>' or 'broadcast stop'.\n");
     }
 
     return 0;

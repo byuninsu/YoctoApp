@@ -15,5 +15,6 @@ uint8_t  getDiscreteOut(uint8_t gpio);
 uint16_t getDiscreteOutAll(void);
 uint32_t  setDiscreteConf(uint8_t port, uint8_t value);
 uint32_t  getDiscreteConf(uint8_t port, uint8_t *value);
+uint32_t setDiscreteOutAll(uint16_t value);
 
 #endif // LED_CONTROL_H

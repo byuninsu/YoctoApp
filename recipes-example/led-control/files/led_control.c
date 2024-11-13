@@ -276,6 +276,37 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
     return 0;
 }
 
+uint32_t setDiscreteOutAll(uint16_t value) {
+    uint8_t port0_value = (uint8_t)(value & 0xFF);      // 하위 8비트는 Port 0에 할당
+    uint8_t port1_value = (uint8_t)((value >> 8) & 0xFF); // 상위 8비트는 Port 1에 할당
+
+    // I2C 초기화
+    i2cInit(DISCRETE_OUT_ADDR);
+
+    // Port 0 설정
+    if (i2c_write_byte(GPIO_EXPENDER_CONF_00P, 0x00) != 0 ||
+        i2c_write_byte(GPIO_EXPENDER_00P, port0_value) != 0) {
+        fprintf(stderr, "Failed to write to Port 0\n");
+        i2cClose();
+        return 1;
+    }
+
+    // Port 1 설정
+    if (i2c_write_byte(GPIO_EXPENDER_CONF_01P, 0x00) != 0 ||
+        i2c_write_byte(GPIO_EXPENDER_01P, port1_value) != 0) {
+        fprintf(stderr, "Failed to write to Port 1\n");
+        i2cClose();
+        return 1;
+    }
+
+    printf("Set GPIOs to value: 0x%04X\n", value);
+
+    // I2C 닫기
+    i2cClose();
+
+    return 0;
+}
+
 
 uint8_t getDiscreteOut(uint8_t gpio) {
     unsigned char mask = 1 << (gpio % 8);
