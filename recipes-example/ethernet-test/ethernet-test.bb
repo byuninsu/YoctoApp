@@ -7,13 +7,33 @@ SRC_URI = "file://ethernet_test.c"
 
 S = "${WORKDIR}"
 
-DEPENDS = "led-control discrete-in"
+DEPENDS = "led-control \
+           discrete-in \
+           nvram-control \
+           bit-manager \
+           cjson \
+           usb-control \
+           stm32-control \
+           rs232-control \
+           ethernet-control \
+           optic-control"
 
 do_compile() {
     ${CC} ${CFLAGS} ${LDFLAGS} \
-    -I${STAGING_INCDIR} -L${STAGING_LIBDIR} \
+    -I${STAGING_INCDIR} \
+    -I${STAGING_INCDIR}/cjson \
+    -L${STAGING_LIBDIR} \
     -o ethernet-test ethernet_test.c \
-    -ldiscrete-in -lled-control
+    -lled-control \
+    -ldiscrete-in \
+    -lnvram-control \
+    -lbit-manager \
+    -lcjson \
+    -lusb-control \
+    -lstm32-control \
+    -lrs232-control \
+    -lethernet-control \
+    -loptic-control 
 }
 
 do_install() {

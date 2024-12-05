@@ -417,4 +417,3 @@ uint32_t getDiscreteConf(uint8_t port, uint8_t *value) {
 }
 
 
-

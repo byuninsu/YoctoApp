@@ -8,16 +8,30 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 
+#include "cJSON.h"
+#include "stm32_control.h"
+#include "rs232_control.h"
+#include "ethernet_control.h"
 #include "discrete_in.h"
 #include "led_control.h"
+#include "nvram_control.h"
+#include "bit_manager.h"
 
 #define RECEIVE_PORT 8080        // Listening port
 #define SEND_PORT 8060        // Sending port
 #define BUFFER_SIZE 1024
-#define OPCODE_DISCRETE_OUT "CSRICR0001"
 #define OPCODE_SIZE 10  // OPCode 크기 정의
 #define MAX_PARM_SIZE 256  // Parm 최대 크기 정의
 #define BROADCAST_IP "255.255.255.255"  // 브로드캐스트 주소
+#define SSD_SMARTLOG_LENGTH 17  // SMARTLOG LENGTH
+
+//OPCODE 정의
+#define OPCODE_DISCRETE_OUT "CSRICR0001"
+#define OPCODE_BOOT_MODE "CSRSMR0005" 
+#define OPCODE_BIT_TEST_PBIT "CSCBMR0001"
+#define OPCODE_BIT_TEST_CBIT "CSCBMR0002"
+#define OPCODE_BIT_TEST_IBIT "CSCBMR0003" 
+#define OPCODE_OS_SSD_BITE_TEST "CSRICR0006" 
 
 // 메시지 구조체 정의
 typedef struct {
@@ -27,8 +41,11 @@ typedef struct {
     char Parm[MAX_PARM_SIZE];       // Parm (sizeof(char) * SizeofParm 크기)
 } Message;
 
+
 // 함수 프로토타입 추가
 void processingDiscreteOut(const char *Parm, uint16_t sequenceCount);
+void processingBootMode(const char Parm[], uint16_t sequenceCount);
+void processingBitResult(const char Parm[], uint16_t sequenceCount, uint32_t requestBit);
 int init_recv_socket();
 int init_send_socket();
 void *receive_and_parse_message(void *arg);
@@ -37,6 +54,7 @@ void stop_broadcast();
 uint16_t parse_binary_string(const char *binary_str);
 void uint16_to_binary_string(uint16_t value, char *output, size_t output_size);
 void broadcastSendMessage(const Message *message); 
+void processingSSDBite(const char Parm[], uint16_t sequenceCount, uint8_t ssd_type);
 
 
 // 전역 변수와 플래그 선언
@@ -95,7 +113,6 @@ int init_send_socket() {
 }
 
 
-// 데이터 수신 및 파싱 함수 (무한 대기)
 void *receive_and_parse_message(void *arg) {
     socklen_t len = sizeof(cliaddr);
     Message msg;
@@ -113,17 +130,43 @@ void *receive_and_parse_message(void *arg) {
             continue;
         }
 
-        // 데이터 파싱 및 출력
-        printf("----Received message----\n");
-        printf("OPCode: %.*s\n", OPCODE_SIZE, msg.OPCode);
-        printf("SequenceCount: %u\n", ntohs(msg.SequenceCount));
-        printf("SizeofParm: %u\n", ntohs(msg.SizeofParm));
-        printf("Parm: %.*s\n", ntohs(msg.SizeofParm), msg.Parm);
-        printf("------------------------\n");
+        // 네트워크 바이트 순서를 호스트 바이트 순서로 변환
+        uint16_t sequenceCount = ntohs(msg.SequenceCount);
+        uint16_t sizeofParm = ntohs(msg.SizeofParm);
 
+        // 데이터 파싱 및 출력
+        printf("\n \n ----Received message----\n");
+        printf("OPCode: %.*s\n", OPCODE_SIZE, msg.OPCode);
+        printf("SequenceCount: %u\n", sequenceCount);
+        printf("SizeofParm: %u\n", sizeofParm);
+        printf("Parm: %.*s\n", sizeofParm, msg.Parm);
+        printf("------------------------\n \n");
+
+        printf(" processing receive data ..... \n");
+
+        // 변환된 데이터와 함께 함수 호출
         if (memcmp(msg.OPCode, OPCODE_DISCRETE_OUT, OPCODE_SIZE) == 0) {
-            printf("Received OPCODE_DISCRETE_OUT message\n");
-            processingDiscreteOut(msg.Parm, msg.SequenceCount);
+            printf("Received OPCODE_DISCRETE_OUT message\n \n");
+            processingDiscreteOut(msg.Parm, sequenceCount);
+        } else if (memcmp(msg.OPCode, OPCODE_BOOT_MODE, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_BOOT_MODE message\n \n");
+            processingBootMode(msg.Parm, sequenceCount);
+        } else if (memcmp(msg.OPCode, OPCODE_BIT_TEST_PBIT, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_BIT_TEST_PBIT message\n \n");
+            uint32_t bit_state = 2;
+            processingBitResult(msg.Parm, sequenceCount, bit_state);
+        } else if (memcmp(msg.OPCode, OPCODE_BIT_TEST_CBIT, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_BIT_TEST_CBIT message\n \n");
+            uint32_t bit_state = 3;
+            processingBitResult(msg.Parm, sequenceCount, bit_state);
+        } else if (memcmp(msg.OPCode, OPCODE_BIT_TEST_IBIT, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_BIT_TEST_IBIT message\n \n");
+            uint32_t bit_state = 4;
+            processingBitResult(msg.Parm, sequenceCount, bit_state);
+        } else if (memcmp(msg.OPCode, OPCODE_OS_SSD_BITE_TEST, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_OS_SSD_BITE_TEST message\n \n ");
+            uint8_t ssd_type = 2;
+            processingSSDBite(msg.Parm, sequenceCount, ssd_type);
         }
     }
 }
@@ -162,6 +205,222 @@ void processingDiscreteOut(const char Parm[], uint16_t sequenceCount) {
     }
 }
 
+void processingBootMode(const char Parm[], uint16_t sequenceCount) {
+    printf("processingBootMode ++\n");
+
+    // Boot Mode 읽기
+    uint8_t readBootModeValue = ReadBootModeStatus();
+
+    // 메시지 생성
+    Message message;
+    strncpy(message.OPCode, OPCODE_BOOT_MODE, OPCODE_SIZE);
+
+    // SequenceCount 증가 및 변환
+    sequenceCount++;
+    printf("SequenceCount before htons: %d\n", sequenceCount);
+    message.SequenceCount = htons(sequenceCount);
+    printf("SequenceCount after htons (network): %d\n", ntohs(message.SequenceCount));
+
+    // Boot Mode 값을 이진 문자열로 변환
+    char binary_string[17];  // 16자리 이진수 + null 문자
+    uint16_to_binary_string(readBootModeValue, binary_string, sizeof(binary_string));
+
+    // 메시지에 데이터 할당
+    strncpy(message.Parm, binary_string, MAX_PARM_SIZE);
+
+    // SizeofParm 계산 및 변환
+    int parmLength = strlen(binary_string);
+    printf("SizeofParm before htons: %d\n", parmLength);
+    message.SizeofParm = htons(parmLength);
+    printf("SizeofParm after htons (network): %d\n", ntohs(message.SizeofParm));
+
+    // 메시지 전송
+    broadcastSendMessage(&message);
+
+    printf("processingBootMode --\n");
+}
+
+// BIT_Test 요청 처리 함수
+void processingBitResult(const char Parm[], uint16_t sequenceCount, uint32_t requestBit) {
+    printf("processingBitResult ++\n");
+
+    RequestBit(requestBit);
+
+    Message message;
+
+    if( requestBit == 1 ){
+        strncpy(message.OPCode, OPCODE_BIT_TEST_PBIT, OPCODE_SIZE);
+    } else if ( requestBit == 2 ){
+        strncpy(message.OPCode, OPCODE_BIT_TEST_CBIT, OPCODE_SIZE);
+    } else if ( requestBit == 3 ){
+        strncpy(message.OPCode, OPCODE_BIT_TEST_IBIT, OPCODE_SIZE);
+    }
+
+    // sequenceCount에 1을 더한 값을 네트워크 바이트 순서로 변환 후 할당
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+
+    uint32_t readBitValue = ReadBitResult(requestBit); // BIT 결과값 읽어와서
+
+    // uint32_t 값을 문자열로 변환하여 Parm에 저장
+    snprintf(message.Parm, MAX_PARM_SIZE, "%x", readBitValue);
+
+    // Parm에 저장된 문자열의 길이를 SizeofParm에 저장
+    message.SizeofParm = strlen(message.Parm);
+
+    broadcastSendMessage(&message);
+}
+
+// processingSSDBite 처리 함수
+void processingSSDBite(const char Parm[], uint16_t sequenceCount, uint8_t ssd_type) {
+    printf("processingSSDBite ++\n");
+
+    SSDSmartLog logValue = getSSDSmartLog(ssd_type);
+
+    Message message;
+    strncpy(message.OPCode, OPCODE_OS_SSD_BITE_TEST, OPCODE_SIZE);
+
+    char buffer[256]; // 임시 문자열 저장 버퍼
+
+    // 1. Critical Warning
+    snprintf(buffer, sizeof(buffer), "Critical Warning: %d", logValue.critical_warning);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 2. Temperature
+    snprintf(buffer, sizeof(buffer), "Temperature: %d C", logValue.temperature);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 3. Available Spare
+    snprintf(buffer, sizeof(buffer), "Available Spare: %d%%", logValue.available_spare);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 4. Available Spare Threshold
+    snprintf(buffer, sizeof(buffer), "Available Spare Threshold: %d%%", logValue.available_spare_threshold);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 5. Percentage Used
+    snprintf(buffer, sizeof(buffer), "Percentage Used: %d%%", logValue.percentage_used);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 6. Data Units Read
+    snprintf(buffer, sizeof(buffer), "Data Units Read: %llu", logValue.data_units_read);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 7. Data Units Written
+    snprintf(buffer, sizeof(buffer), "Data Units Written: %llu", logValue.data_units_written);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 8. Host Read Commands
+    snprintf(buffer, sizeof(buffer), "Host Read Commands: %llu", logValue.host_read_commands);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 9. Host Write Commands
+    snprintf(buffer, sizeof(buffer), "Host Write Commands: %llu", logValue.host_write_commands);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 10. Power Cycles
+    snprintf(buffer, sizeof(buffer), "Power Cycles: %d", logValue.power_cycles);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 11. Power On Hours
+    snprintf(buffer, sizeof(buffer), "Power On Hours: %d", logValue.power_on_hours);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 12. Unsafe Shutdowns
+    snprintf(buffer, sizeof(buffer), "Unsafe Shutdowns: %d", logValue.unsafe_shutdowns);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 13. Media Errors
+    snprintf(buffer, sizeof(buffer), "Media Errors: %d", logValue.media_errors);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 14. Num Error Log Entries
+    snprintf(buffer, sizeof(buffer), "Num Error Log Entries: %d", logValue.num_err_log_entries);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 15. Temperature Sensor 1
+    snprintf(buffer, sizeof(buffer), "Temperature Sensor 1: %d C", logValue.temperature_sensor_1);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 16. Temperature Sensor 2
+    snprintf(buffer, sizeof(buffer), "Temperature Sensor 2: %d C", logValue.temperature_sensor_2);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    // 17. Temperature Sensor 3
+    snprintf(buffer, sizeof(buffer), "Temperature Sensor 3: %d C", logValue.temperature_sensor_3);
+    sequenceCount++;
+    message.SequenceCount = htons(sequenceCount);
+    strncpy(message.Parm, buffer, MAX_PARM_SIZE);
+    message.SizeofParm = htons(strlen(message.Parm));
+    broadcastSendMessage(&message);
+
+    printf("processingSSDBite --\n");
+}
+
 // 브로드캐스트 메시지 전송 함수
 void broadcastSendMessage(const Message *message) {
     struct sockaddr_in broadcastAddr;
@@ -170,18 +429,20 @@ void broadcastSendMessage(const Message *message) {
     broadcastAddr.sin_port = htons(SEND_PORT);
     broadcastAddr.sin_addr.s_addr = inet_addr(BROADCAST_IP);
 
-    printf("----Send message----\n");
+    printf("\n\n----Send message----\n");
     printf("OPCode: %.*s\n", OPCODE_SIZE, message->OPCode);
-    printf("SequenceCount: %u\n", ntohs(message->SequenceCount));
-    printf("SizeofParm: %u\n", ntohs(message->SizeofParm));
+    printf("SequenceCount: %u\n", ntohs(message->SequenceCount)); // 변환 후 출력
+    printf("SizeofParm: %u\n", ntohs(message->SizeofParm));       // 변환 후 출력
     printf("Parm: %.*s\n", ntohs(message->SizeofParm), message->Parm);
     printf("--------------------\n");
 
     int sendLen = sendto(send_sockfd, message, sizeof(Message), 0, (struct sockaddr*)&broadcastAddr, sizeof(broadcastAddr));
     if (sendLen < 0) {
         perror("Broadcast message send failed");
+        printf("\n");
     } else {
-        printf("Broadcast message sent.\n");
+        printf("Broadcast message sent.\n \n");
+        printf("\n");
     }
 }
 
@@ -209,6 +470,11 @@ int configure_uart(int fd) {
 void start_broadcast(void) {
     init_recv_socket();
     init_send_socket();
+
+
+
+
+
 
     keep_running = 1;
     if (pthread_create(&receiveThread, NULL, receive_and_parse_message, NULL) != 0) {

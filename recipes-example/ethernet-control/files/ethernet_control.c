@@ -133,13 +133,16 @@ char* checkEthernetInterface() {
                 return NULL;
             }
 
-            if (edata.data) {
-                printf("Link detected on %s\n", iface);
-                close(sock);
-                return iface;
-            } else {
-                printf("No link detected on %s\n", iface);
-            }
+
+            return iface;
+
+            // if (edata.data) {
+            //     printf("Link detected on %s\n", iface);
+            //     close(sock);
+            //     return iface;
+            // } else {
+            //     printf("No link detected on %s\n", iface);
+            // }
         }
     }
 

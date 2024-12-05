@@ -25,6 +25,10 @@ uint32_t WriteBootCondition(uint8_t bootingConditionState);
 uint32_t ReadBootCondition(void);
 uint32_t WriteCumulativeTime(uint32_t time);
 uint32_t ReadCumulativeTime(void);
+uint32_t WriteBootModeStatus(uint8_t bootmode);
+uint32_t ReadBootModeStatus(void);
+uint32_t InitializeNVRAMToFF(void);
+
 
 
 #endif  // NVRAM_CONTROL_H

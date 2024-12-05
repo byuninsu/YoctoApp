@@ -32,25 +32,23 @@ typedef enum {
 
 // NVRAM 메모리 맵
 typedef enum {
+    //1 byte addr
     NVRAM_POWER_ON_COUNT_ADDR = 0x00,
     NVRAM_MAINTENANCE_MODE_COUNT_ADDR = 0x04,
     NVRAM_NORMAL_MODE_COUNT_ADDR = 0x08,
     NVRAM_CONTAINER_START_COUNT_ADDR = 0x0C,
     NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR = 0x10,
     NVRAM_RESET_BY_BUTTON_COUNT_ADDR = 0x14,
-
     NVRAM_ACTIVATED_TEST = 0x18,
-
     NVRAM_MAINTENANCE_MODE = 0x1C,
-
     NVRAM_BOOTING_CONDITION = 0x20,
-
+    NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR = 0x3C,
+    NVRAM_CUMULATIVE_TIME_ADDR = 0x40,
+    NVRAM_BOOT_MODE = 0x44,
+    //4 byte addr
     NVRAM_BIT_RESULT_POWERON = 0x24,
     NVRAM_BIT_RESULT_CONTINUOUS = 0x2C,
-    NVRAM_BIT_RESULT_INITIATED = 0x34,
-
-    NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR = 0x3C,
-    NVRAM_CUMULATIVE_TIME_ADDR = 0x40
+    NVRAM_BIT_RESULT_INITIATED = 0x34
 } NvramAddress;
 
     
@@ -433,6 +431,48 @@ uint32_t getNVRAMId(void) {
     close(fd);
 
     return nvram_output;
+}
+
+// NVRAM 전체 초기화 함수
+uint32_t InitializeNVRAMToFF(void) {
+    uint32_t result = 0;
+
+    printf("Initializing NVRAM to 0xFF...\n");
+
+    // 1바이트 주소 초기화
+    if (WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_ACTIVATED_TEST, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_MAINTENANCE_MODE, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_BOOTING_CONDITION, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_CUMULATIVE_TIME_ADDR, 0xFF)) result = 1;
+    if (WriteNVRAMValue(NVRAM_BOOT_MODE, 0xFF)) result = 1;
+
+    // 4바이트 주소 초기화
+    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON, 0xFFFFFFFF)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS, 0xFFFFFFFF)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED, 0xFFFFFFFF)) result = 1;
+
+    if (result == 0) {
+        printf("NVRAM initialization to 0xFF completed successfully.\n");
+    } else {
+        printf("NVRAM initialization to 0xFF failed.\n");
+    }
+
+    return result;
+}
+
+uint32_t  WriteBootModeStatus(uint8_t bootmode) {
+    return WriteNVRAMValue(NVRAM_BOOT_MODE, bootmode);
+}
+
+uint32_t  ReadBootModeStatus(void) {
+    return ReadNVRAMValue(NVRAM_BOOT_MODE);
 }
 
 uint32_t  WriteMaintenanceModeStatus(uint8_t maintenanceModeState) {

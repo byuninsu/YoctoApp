@@ -19,11 +19,11 @@ do_compile() {
 }
 
 do_install() {
-    install -d ${D}${includedir}/stm32-control
-    install -m 0644 stm32_control.h ${D}${includedir}/stm32-control/
+    install -d ${D}${includedir}
+    install -m 0644 stm32_control.h ${D}${includedir}/stm32_control.h
 
     install -d ${D}${libdir}
     install -m 0644 libstm32-control.a ${D}${libdir}/
 }
 
-FILES_${PN} = "${includedir}/stm32-control/stm32_control.h ${libdir}/libstm32-control.a"
+FILES_${PN} = "${includedir}/stm32_control.h ${libdir}/libstm32-control.a"

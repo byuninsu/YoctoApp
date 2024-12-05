@@ -13,6 +13,10 @@
 #include "optic_control.h"
 #include "bit_manager.h"
 
+#define BOOT_NOMAL_MODE 00 
+#define BOOT_SIL_MODE 01
+#define BOOT_WINDOWS_MODE 11  
+
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <command> [options]\n", argv[0]);
@@ -69,6 +73,9 @@ int main(int argc, char *argv[]) {
                 } else if (strcmp(argv[4], "gpio") == 0) {
                     uint8_t port = (uint8_t)strtol(argv[5], NULL, 16);
                     getDiscreteOut(port);
+                } else if (strcmp(argv[4], "all") == 0) {
+                    uint16_t discreteValue = getDiscreteOutAll();
+                    printf("All discreteValue = 0x%04X\n", discreteValue);
                 }
             } else {
                 printf("Invalid command. Use set, conf, or get.\n");
@@ -271,11 +278,6 @@ else if (strcmp(argv[1], "nvram") == 0) {
         }
     }
 
-    // Handling 'bootcondition' commands
-    else if (strcmp(argv[1], "bootcondition") == 0) {
-        sendBootCondition();
-    }
-
     // Handling 'watchdog' commands
     else if (strcmp(argv[1], "watchdog") == 0) {
         if (argc < 3) {
@@ -329,6 +331,48 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } 
     }
 
+        // Handling 'erase' commands
+    else if (strcmp(argv[1], "erase") == 0) {
+        if (argc < 2) {
+            fprintf(stderr, "Usage: %s erase <ssd/nvram>\n", argv[0]);
+            return 1;
+        }
+
+        if (strcmp(argv[2], "ssd") == 0) {
+            initializeDataSSD();
+        } 
+
+        if (strcmp(argv[2], "nvram") == 0) {
+            InitializeNVRAMToFF();
+        } 
+    }
+
+        // Handling 'boot mode' commands
+    else if (strcmp(argv[1], "bootmode") == 0) {
+        if (argc < 2) {
+            fprintf(stderr, "Usage: %s bootmode check\n", argv[0]);
+            return 1;
+        }
+
+        if (strcmp(argv[2], "check") == 0) {
+            uint32_t discreteInValue = GetDiscreteState();
+
+            if ((discreteInValue & 0x0001) == 0x0001){
+                char command[256];
+                snprintf(command, sizeof(command), "ethernet-test broadcast start &");
+                system(command);
+
+                WriteBootModeStatus(BOOT_SIL_MODE);
+
+                printf("Detect Discrete-In 'Input_01 Vaule : True'  BootMode : Test  \n");
+                printf("Start ethernet-test app ! \n");
+            } else {
+                printf("Detect Discrete-In 'Input_01 Vaule : False'  BootMode : Nomal  \n");
+            }
+        } 
+
+    }
+
     // BIT Check commands
     else if (strcmp(argv[1], "check") == 0) {
         if (argc < 2) {
@@ -346,23 +390,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
                 check_ssd("os");
             } else if (strcmp(option, "data") == 0){
                 check_ssd("data");
-            } else if (strcmp(option, "smart") == 0){
-                unsigned char smart_log[202] = {0};
-                char *ssdOption = argv[4];
-
-                // get_nvme_smart_log 함수 호출
-                int result = get_nvme_smart_log(ssdOption, smart_log);
-
-                if (result == 0) {
-                    printf("ssd S.M.A.R.T LOG : \n");
-                    for (int i = 0; i < sizeof(smart_log); i++) {
-                        printf("%02X ", smart_log[i]);
-                        if ((i + 1) % 16 == 0) printf("\n"); // 16 바이트마다 줄바꿈
-                    }
-                } else {
-                    printf("Failed to get S.M.A.R.T. log.\n");
-                }
-            }
+            } 
         } else if (strcmp(option, "discrete") == 0) {
             char *option = argv[3];
             if (strcmp(option, "out") == 0 ){

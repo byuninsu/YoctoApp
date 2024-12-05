@@ -14,6 +14,8 @@ case "$1" in
     /sbin/dhcpcd
     sleep 5
     /usr/bin/debug-app ethernet nego disable
+    sleep 5
+    /usr/bin/debug-app bootmode check
     ;;
   stop)
     echo "Stopping dhcpcd"

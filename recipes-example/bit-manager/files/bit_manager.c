@@ -10,6 +10,7 @@
 #include <time.h>
 #include <time.h>
 #include <linux/nvme_ioctl.h>
+#include <sys/mount.h>
 #include "cJSON.h"
 #include "bit_manager.h"
 #include "usb_control.h"
@@ -28,12 +29,14 @@
 #define SMART_LOG_SIZE 202
 #define NVME_DEVICE_DATA "/dev/nvme0n1"
 #define NVME_DEVICE_OS "/dev/nvme1n1"
+#define NVME_MOUNT_POINT_DATA "/mnt/dataSSD"
 
 
 char iface[20] = {0};
 uint32_t powerOnBitResult = 0; 
 uint32_t ContinuousBitResult = 0; 
 uint32_t initiatedBitResult = 0; 
+
 
 const char* itemNames[] = {
     "GPU module",
@@ -51,112 +54,6 @@ const char* itemNames[] = {
     "Power Monitor"
 };
 
-int get_nvme_smart_log() {
-    FILE *fp;
-    char command[256];
-    char buffer[256];
-    char key[128], value[128];
-
-    // SMART 데이터 변수 선언
-    int critical_warning = 0;
-    int temperature = 0;
-    int available_spare = 0;
-    int available_spare_threshold = 0;
-    int percentage_used = 0;
-    uint64_t data_units_read = 0;
-    uint64_t data_units_written = 0;
-    uint64_t host_read_commands = 0;
-    uint64_t host_write_commands = 0;
-    uint64_t controller_busy_time = 0;
-    uint64_t power_cycles = 0;
-    uint64_t power_on_hours = 0;
-    uint64_t unsafe_shutdowns = 0;
-    uint64_t media_errors = 0;
-    int warning_temperature_time = 0;
-    int critical_temperature_time = 0;
-    int temperature_sensor_1 = 0;
-
-    // 명령어 구성
-    snprintf(command, sizeof(command), "nvme smart-log %s", NVME_DEVICE_DATA);
-
-    // 명령어 실행
-    fp = popen(command, "r");
-    if (fp == NULL) {
-        perror("Failed to run command");
-        return 1;
-    }
-
-    // 각 줄을 읽어와서 키와 값을 파싱
-    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
-        // 줄에서 key와 value를 분리
-        if (sscanf(buffer, "%[^:]:%[^\n]", key, value) == 2) {
-            // 공백 제거
-            for (char *p = value; *p; ++p) if (*p == ' ') memmove(p, p + 1, strlen(p));
-
-            // 각 키에 따른 값을 변수에 저장
-            if (strcmp(key, "critical_warning") == 0) {
-                critical_warning = atoi(value);
-            } else if (strcmp(key, "temperature") == 0) {
-                temperature = atoi(value);
-            } else if (strcmp(key, "available_spare") == 0) {
-                available_spare = atoi(value);
-            } else if (strcmp(key, "available_spare_threshold") == 0) {
-                available_spare_threshold = atoi(value);
-            } else if (strcmp(key, "percentage_used") == 0) {
-                percentage_used = atoi(value);
-            } else if (strcmp(key, "data_units_read") == 0) {
-                data_units_read = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "data_units_written") == 0) {
-                data_units_written = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "host_read_commands") == 0) {
-                host_read_commands = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "host_write_commands") == 0) {
-                host_write_commands = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "controller_busy_time") == 0) {
-                controller_busy_time = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "power_cycles") == 0) {
-                power_cycles = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "power_on_hours") == 0) {
-                power_on_hours = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "unsafe_shutdowns") == 0) {
-                unsafe_shutdowns = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "media_errors") == 0) {
-                media_errors = strtoull(value, NULL, 10);
-            } else if (strcmp(key, "Warning Temperature Time") == 0) {
-                warning_temperature_time = atoi(value);
-            } else if (strcmp(key, "Critical Composite Temperature Time") == 0) {
-                critical_temperature_time = atoi(value);
-            } else if (strcmp(key, "Temperature Sensor 1") == 0) {
-                temperature_sensor_1 = atoi(value);
-            }
-        }
-    }
-
-    // 프로세스 종료
-    pclose(fp);
-
-    // 최종 출력
-    printf("NVMe SMART Log for device: %s\n", NVME_DEVICE_DATA);
-    printf("Critical Warning: %d\n", critical_warning);
-    printf("Temperature: %d C\n", temperature);
-    printf("Available Spare: %d%%\n", available_spare);
-    printf("Available Spare Threshold: %d%%\n", available_spare_threshold);
-    printf("Percentage Used: %d%%\n", percentage_used);
-    printf("Data Units Read: %llu\n", data_units_read);
-    printf("Data Units Written: %llu\n", data_units_written);
-    printf("Host Read Commands: %llu\n", host_read_commands);
-    printf("Host Write Commands: %llu\n", host_write_commands);
-    printf("Controller Busy Time: %llu\n", controller_busy_time);
-    printf("Power Cycles: %llu\n", power_cycles);
-    printf("Power On Hours: %llu\n", power_on_hours);
-    printf("Unsafe Shutdowns: %llu\n", unsafe_shutdowns);
-    printf("Media Errors: %llu\n", media_errors);
-    printf("Warning Temperature Time: %d\n", warning_temperature_time);
-    printf("Critical Composite Temperature Time: %d\n", critical_temperature_time);
-    printf("Temperature Sensor 1: %d C\n", temperature_sensor_1);
-
-    return 0;
-}
 
 size_t GetItemCount() {
     return sizeof(itemNames) / sizeof(itemNames[0]);
@@ -302,6 +199,97 @@ int check_ssd(const char *ssd_path) {
     printf("SSD check on %s completed successfully.\n", device_path);
     return 0;
 }
+
+SSDSmartLog getSSDSmartLog(uint8_t ssd_type) {
+    SSDSmartLog log = {0}; // 구조체 초기화
+    FILE *fp = NULL;       // 파일 포인터 초기화
+
+    if (ssd_type == 2) {
+        fp = popen("nvme smart-log /dev/nvme1", "r");
+    } else if (ssd_type == 3) {
+        fp = popen("nvme smart-log /dev/nvme0", "r");
+    }
+
+    if (fp == NULL) {
+        perror("Failed to run nvme command");
+        return log; // 실패 시 빈 구조체 반환
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), fp) != NULL) {
+        sscanf(line, "critical_warning : %d", &log.critical_warning);
+        sscanf(line, "temperature : %d C", &log.temperature);
+        sscanf(line, "available_spare : %d%%", &log.available_spare);
+        sscanf(line, "available_spare_threshold : %d%%", &log.available_spare_threshold);
+        sscanf(line, "percentage_used : %d%%", &log.percentage_used);
+        sscanf(line, "data_units_read : %llu", &log.data_units_read);
+        sscanf(line, "data_units_written : %llu", &log.data_units_written);
+        sscanf(line, "host_read_commands : %llu", &log.host_read_commands);
+        sscanf(line, "host_write_commands : %llu", &log.host_write_commands);
+        sscanf(line, "power_cycles : %d", &log.power_cycles);
+        sscanf(line, "power_on_hours : %d", &log.power_on_hours);
+        sscanf(line, "unsafe_shutdowns : %d", &log.unsafe_shutdowns);
+        sscanf(line, "media_errors : %d", &log.media_errors);
+        sscanf(line, "num_err_log_entries : %d", &log.num_err_log_entries);
+        sscanf(line, "Temperature Sensor 1 : %d C", &log.temperature_sensor_1);
+        sscanf(line, "Temperature Sensor 2 : %d C", &log.temperature_sensor_2);
+        sscanf(line, "Temperature Sensor 3 : %d C", &log.temperature_sensor_3);
+    }
+
+    pclose(fp);
+    return log;
+}
+
+uint8_t initializeDataSSD(void) {
+    char command[256];
+    uint8_t result = 0; // 성공 여부를 저장
+
+    printf("Starting SSD initialization...\n");
+
+    // 1. 마운트 해제
+    if (umount(NVME_MOUNT_POINT_DATA) == 0) {
+        printf("Unmounted %s successfully.\n", NVME_MOUNT_POINT_DATA);
+    } else {
+        perror("Unmount failed");
+        result = 1;
+    }
+
+    // 2. 디스크 초기화 (wipefs 사용)
+    snprintf(command, sizeof(command), "wipefs -a %s", NVME_DEVICE_DATA);
+    if (system(command) == 0) {
+        printf("Disk %s wiped successfully.\n", NVME_DEVICE_DATA);
+    } else {
+        perror("Wipe failed");
+        result = 1;
+    }
+
+    // 3. ext4 파일 시스템 생성
+    snprintf(command, sizeof(command), "mkfs.ext4 %s", NVME_DEVICE_DATA);
+    if (system(command) == 0) {
+        printf("Formatted %s as ext4 successfully.\n", NVME_DEVICE_DATA);
+    } else {
+        perror("Format failed");
+        result = 1;
+    }
+
+    // 4. 디스크 다시 마운트
+    if (mount(NVME_DEVICE_DATA, NVME_MOUNT_POINT_DATA, "ext4", 0, NULL) == 0) {
+        printf("Mounted %s to %s successfully.\n", NVME_DEVICE_DATA, NVME_MOUNT_POINT_DATA);
+    } else {
+        perror("Mount failed");
+        result = 1;
+    }
+
+    if (result == 0) {
+        printf("SSD initialization completed successfully.\n");
+    } else {
+        printf("SSD initialization failed.\n");
+    }
+
+    return result;
+}
+
+
 
 int check_gpio_expander() {
     int status;
