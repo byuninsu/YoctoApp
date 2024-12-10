@@ -11,7 +11,8 @@
  * @return 0 on success, 1 on failure.
  */
 uint32_t getOpticTestRegister(void) ;
-void setOpticPort(void);
+uint8_t setDefaultPort(void);
+uint8_t setOpticPort(void);
 
 #endif // OPTIC_CONTROL_H
 

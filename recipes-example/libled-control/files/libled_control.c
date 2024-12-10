@@ -239,7 +239,6 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
 
     if(currentValue != 0x00){
         i2c_write_byte(reg,0x00);
-        i2c_write_byte(initReg, 0x00);
         printf("set configuration Value : 0xFF"); 
     }
 
@@ -415,5 +414,6 @@ uint32_t getDiscreteConf(uint8_t port, uint8_t *value) {
     
     return 0;
 }
+
 
 

@@ -23,7 +23,7 @@
 #include "discrete_in.h"
 #include "optic_control.h"
 
-#define LOG_FILE_DIR "/mnt/dataSSD"
+#define LOG_FILE_DIR "/mnt/dataSSD/"
 #define LOG_FILE_NAME "BitErrorLog.json"
 #define LOG_BUFFER_SIZE 4096
 #define SMART_LOG_SIZE 202
@@ -31,12 +31,10 @@
 #define NVME_DEVICE_OS "/dev/nvme1n1"
 #define NVME_MOUNT_POINT_DATA "/mnt/dataSSD"
 
-
 char iface[20] = {0};
 uint32_t powerOnBitResult = 0; 
 uint32_t ContinuousBitResult = 0; 
 uint32_t initiatedBitResult = 0; 
-
 
 const char* itemNames[] = {
     "GPU module",
@@ -67,6 +65,36 @@ const char* GetItemName(uint32_t mItem) {
     }
 }
 
+uint32_t GetLastSequence(const char *filePath) {
+    FILE *file = fopen(filePath, "r");
+    if (file == NULL) {
+        return 1; // 첫 파일 생성 시 Sequence는 1
+    }
+
+    char buffer[1024];
+    char *lastLine = NULL;
+
+    // 파일 끝까지 읽어 마지막 줄 추출
+    while (fgets(buffer, sizeof(buffer), file) != NULL) {
+        lastLine = strdup(buffer); // 가장 마지막 줄을 복사
+    }
+    fclose(file);
+
+    if (lastLine == NULL) {
+        return 1; // 빈 파일이면 Sequence는 1
+    }
+
+    // 마지막 줄에서 Sequence 추출
+    char *seqStr = strstr(lastLine, "\"Sequence\":");
+    uint32_t lastSequence = 1;
+    if (seqStr) {
+        sscanf(seqStr, "\"Sequence\":%u,", &lastSequence);
+        lastSequence++; // 다음 시퀀스 계산
+    }
+    free(lastLine);
+    return lastSequence;
+}
+
 int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     FILE *logFile;
     time_t now;
@@ -82,6 +110,9 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     // Set the log file path (fixed name)
     snprintf(logFilePath, sizeof(logFilePath), "%s%s", LOG_FILE_DIR, LOG_FILE_NAME);
 
+    // Get the last sequence
+    uint32_t sequence = GetLastSequence(logFilePath);
+
     // Open the log file for appending
     logFile = fopen(logFilePath, "a");
     if (logFile == NULL) {
@@ -91,6 +122,9 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
 
     // Start writing the JSON object
     fprintf(logFile, "{");
+
+    // Write the Sequence
+    fprintf(logFile, "\"Sequence\":%u,", sequence);
 
     // Iterate through each bit of bitStatus using the dynamic item count
     size_t itemCount = GetItemCount();
@@ -200,10 +234,11 @@ int check_ssd(const char *ssd_path) {
     return 0;
 }
 
-SSDSmartLog getSSDSmartLog(uint8_t ssd_type) {
-    SSDSmartLog log = {0}; // 구조체 초기화
-    FILE *fp = NULL;       // 파일 포인터 초기화
+SSD_Status getSSDSmartLog(uint8_t ssd_type) {
+    SSD_Status log = {0}; // 구조체 초기화
+    FILE *fp = NULL;      // 파일 포인터 초기화
 
+    // NVMe 디바이스 선택
     if (ssd_type == 2) {
         fp = popen("nvme smart-log /dev/nvme1", "r");
     } else if (ssd_type == 3) {
@@ -217,23 +252,22 @@ SSDSmartLog getSSDSmartLog(uint8_t ssd_type) {
 
     char line[256];
     while (fgets(line, sizeof(line), fp) != NULL) {
-        sscanf(line, "critical_warning : %d", &log.critical_warning);
-        sscanf(line, "temperature : %d C", &log.temperature);
-        sscanf(line, "available_spare : %d%%", &log.available_spare);
-        sscanf(line, "available_spare_threshold : %d%%", &log.available_spare_threshold);
-        sscanf(line, "percentage_used : %d%%", &log.percentage_used);
-        sscanf(line, "data_units_read : %llu", &log.data_units_read);
-        sscanf(line, "data_units_written : %llu", &log.data_units_written);
-        sscanf(line, "host_read_commands : %llu", &log.host_read_commands);
-        sscanf(line, "host_write_commands : %llu", &log.host_write_commands);
-        sscanf(line, "power_cycles : %d", &log.power_cycles);
-        sscanf(line, "power_on_hours : %d", &log.power_on_hours);
-        sscanf(line, "unsafe_shutdowns : %d", &log.unsafe_shutdowns);
-        sscanf(line, "media_errors : %d", &log.media_errors);
-        sscanf(line, "num_err_log_entries : %d", &log.num_err_log_entries);
-        sscanf(line, "Temperature Sensor 1 : %d C", &log.temperature_sensor_1);
-        sscanf(line, "Temperature Sensor 2 : %d C", &log.temperature_sensor_2);
-        sscanf(line, "Temperature Sensor 3 : %d C", &log.temperature_sensor_3);
+        sscanf(line, "temperature                             : %hhu C", &log.temperature);
+        sscanf(line, "available_spare                         : %hhu%%", &log.available_spare);
+        sscanf(line, "available_spare_threshold               : %hhu%%", &log.available_spare_threshold);
+        sscanf(line, "percentage_used                         : %hhu%%", &log.percentage_used);
+        sscanf(line, "data_units_read                         : %u", &log.data_units_read);
+        sscanf(line, "data_units_written                      : %u", &log.data_units_written);
+        sscanf(line, "host_read_commands                      : %u", &log.host_read_commands);
+        sscanf(line, "host_write_commands                     : %u", &log.host_write_commands);
+        sscanf(line, "controller_busy_time                    : %u", &log.controller_busy_time);
+        sscanf(line, "power_cycles                            : %u", &log.power_cycles);
+        sscanf(line, "power_on_hours                          : %u", &log.power_on_hours);
+        sscanf(line, "unsafe_shutdowns                        : %u", &log.unsafe_shutdowns);
+        sscanf(line, "media_and_data_errors                   : %u", &log.media_and_data_errors);
+        sscanf(line, "num_err_log_entries                     : %u", &log.error_log_entries);
+        sscanf(line, "Warning Temperature Time                : %u", &log.warning_temp_time);
+        sscanf(line, "Critical Composite Temperature Time     : %u", &log.critical_temp_time);
     }
 
     pclose(fp);
@@ -718,7 +752,6 @@ void  RequestBit(uint32_t mtype) {
     }
 
     WriteBitResult(mtype, bitStatus);
-
 
 }
 

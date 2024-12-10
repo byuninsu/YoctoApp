@@ -84,6 +84,7 @@ uint32_t discreteSpiInit(void) {
 }
 
 uint32_t GetDiscreteState(void) {
+    printf("GetDiscreteState ++ \n");
     uint8_t tx_buf1[1];
     uint8_t tx_buf2[4] = { 0xFF }; // 더미 데이터 전송 버퍼
     uint8_t rx_buf[4] = { 0 };     // 데이터 수신 버퍼

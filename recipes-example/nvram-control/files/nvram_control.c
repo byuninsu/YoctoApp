@@ -164,7 +164,7 @@ uint32_t ReadNVRAMValue(uint32_t address) {
 }
 
 uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
-    printf("WriteNVRAMValue input value = 0x%02x\n", value);
+    printf("WriteNVRAMValue input value = 0x%02x at ADdr = 0x%08x\n", value, address);
 
     uint8_t tx_buf[1];
     uint8_t tx_command_buf[5];
@@ -305,7 +305,7 @@ uint32_t ReadNVRAM4ByteValue(uint32_t address) {
 }
 
 uint32_t WriteNVRAM4ByteValue(uint32_t address, uint32_t value) {
-    printf("WriteNVRAMValue input value = 0x%08x\n", value);
+    printf("WriteNVRAM4ByteValue input value = 0x%08x at ADdr = 0x%08x\n", value, address);
 
     uint8_t tx_buf[1];
     uint8_t tx_command_buf[5];

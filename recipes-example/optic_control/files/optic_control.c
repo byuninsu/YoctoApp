@@ -82,7 +82,7 @@ uint32_t getOpticTestRegister(void) {
 }
 
 
-void setOpticPort(void) {
+uint8_t setOpticPort(void) {
     const char *optic_scripts[] = {
         "/usr/bin/port9.sh",
         "/usr/bin/port10.sh",
@@ -94,12 +94,13 @@ void setOpticPort(void) {
     };
 
     size_t num_scripts = sizeof(optic_scripts) / sizeof(optic_scripts[0]);
-    uint8_t result = 0;
+    uint8_t result = 0; // 0: 성공, 1: 실패
 
     char *iface = checkEthernetInterface();
-    
+
     if (iface == NULL) {
         printf("No valid Ethernet interface found.\n");
+        return 1; // 실패
     }
 
     for (size_t i = 0; i < num_scripts; i++) {
@@ -107,16 +108,20 @@ void setOpticPort(void) {
         snprintf(command, sizeof(command), "%s %s", optic_scripts[i], iface);
 
         int status = system(command);
-        if (status == -1) {
+        if (status == -1 || WEXITSTATUS(status) != 0) {
+            // 스크립트 실행 실패 처리
             printf("Failed to execute %s\n", optic_scripts[i]);
-
+            result = 1; // 실패 상태로 업데이트
         } else {
+            // 스크립트 실행 성공 처리
             printf("Executed %s successfully\n", optic_scripts[i]);
         }
     }
+
+    return result;
 }
 
-void setDefaultPort(void) {
+uint8_t setDefaultPort(void) {
     const char *scripts[] = {
         "/usr/bin/port9_default.sh",
         "/usr/bin/port10_default.sh",
@@ -128,12 +133,13 @@ void setDefaultPort(void) {
     };
 
     size_t num_scripts = sizeof(scripts) / sizeof(scripts[0]);
-    uint8_t result = 0;
+    uint8_t result = 0; // 0: 성공, 1: 실패
 
     char *iface = checkEthernetInterface();
-    
+
     if (iface == NULL) {
         printf("No valid Ethernet interface found.\n");
+        return 1; // 실패
     }
 
     for (size_t i = 0; i < num_scripts; i++) {
@@ -141,11 +147,15 @@ void setDefaultPort(void) {
         snprintf(command, sizeof(command), "%s %s", scripts[i], iface);
 
         int status = system(command);
-        if (status == -1) {
+        if (status == -1 || WEXITSTATUS(status) != 0) {
+            // 스크립트 실행 실패 처리
             printf("Failed to execute %s\n", scripts[i]);
-
+            result = 1; // 실패 상태로 업데이트
         } else {
+            // 스크립트 실행 성공 처리
             printf("Executed %s successfully\n", scripts[i]);
         }
     }
+
+    return result;
 }

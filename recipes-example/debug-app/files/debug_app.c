@@ -14,8 +14,8 @@
 #include "bit_manager.h"
 
 #define BOOT_NOMAL_MODE 00 
-#define BOOT_SIL_MODE 01
-#define BOOT_WINDOWS_MODE 11  
+#define BOOT_SIL_MODE 0x01
+#define BOOT_NOMAL_MODE 0x00  
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -258,9 +258,11 @@ else if (strcmp(argv[1], "nvram") == 0) {
         if (strcmp(argv[2], "temp") == 0) {
             printf("Temperature: %.2f\n", getTempSensorValue());
         } else if (strcmp(argv[2], "vol") == 0) {
-            printf("Temperature: %.2f\n", getVoltageValue());
+            printf("Voltage: %.2f\n", getVoltageValue());
         } else if (strcmp(argv[2], "current") == 0) {
-            printf("Temperature: %.2f\n", getCurrentValue());
+            printf("Current: %.2f\n", getCurrentValue());
+        } else if (strcmp(argv[2], "bootcondition") == 0) {
+            printf("BootCondition: %.2f\n", sendBootCondition());
         }
     }
 
@@ -357,17 +359,17 @@ else if (strcmp(argv[1], "nvram") == 0) {
         if (strcmp(argv[2], "check") == 0) {
             uint32_t discreteInValue = GetDiscreteState();
 
-            if ((discreteInValue & 0x0001) == 0x0001){
+            if ((discreteInValue & 0x0020) == 0x0020 && (discreteInValue & 0x0040) == 0) {
                 char command[256];
                 snprintf(command, sizeof(command), "ethernet-test broadcast start &");
                 system(command);
 
                 WriteBootModeStatus(BOOT_SIL_MODE);
 
-                printf("Detect Discrete-In 'Input_01 Vaule : True'  BootMode : Test  \n");
-                printf("Start ethernet-test app ! \n");
+                printf("\n Detect Discrete-In 'Input_05 Value: True', BootMode: Test\n");
+                printf("Start ethernet-test app!\n");
             } else {
-                printf("Detect Discrete-In 'Input_01 Vaule : False'  BootMode : Nomal  \n");
+                printf("Detect Discrete-In 'Input_05 Value: False', BootMode: Normal\n");
             }
         } 
 

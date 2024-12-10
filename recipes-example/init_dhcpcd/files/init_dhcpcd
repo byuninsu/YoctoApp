@@ -12,10 +12,12 @@ case "$1" in
   start)
     echo "Starting dhcpcd"
     /sbin/dhcpcd
-    sleep 5
+    sleep 2
     /usr/bin/debug-app ethernet nego disable
-    sleep 5
+    sleep 2
     /usr/bin/debug-app bootmode check
+    sleep 2
+    /usr/bin/debug-app stm32 bootcondition
     ;;
   stop)
     echo "Stopping dhcpcd"
