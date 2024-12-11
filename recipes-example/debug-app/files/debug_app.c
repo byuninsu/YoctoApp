@@ -299,7 +299,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
     // Handling 'optic' commands
     else if (strcmp(argv[1], "optic") == 0) {
         if (argc < 3) {
-            fprintf(stderr, "Usage: %s optic <test/set/default>\n", argv[0]);
+            fprintf(stderr, "Usage: %s optic <test/set/copper>\n", argv[0]);
             return 1;
         }
 
@@ -309,10 +309,10 @@ else if (strcmp(argv[1], "nvram") == 0) {
         else if (strcmp(argv[2], "set") == 0) {  
             setOpticPort();
         }
-        else if (strcmp(argv[2], "default") == 0) {  
+        else if (strcmp(argv[2], "copper") == 0) {  
             setDefaultPort();
         } else {
-            fprintf(stderr, "Invalid optic command. Usage: %s optic <test/set/default>\n", argv[0]);
+            fprintf(stderr, "Invalid optic command. Usage: %s optic <test/set/copper>\n", argv[0]);
             return 1;
         }
     }

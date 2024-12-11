@@ -1,4 +1,4 @@
-#include "optic_control.h"
+#include "liboptic_control.h"
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 #include <fcntl.h>

@@ -13,13 +13,7 @@ SRC_URI = "file://init_dhcpcd \
            file://port6.sh \
            file://port9.sh \
            file://port10.sh \
-           file://port2_default.sh \
-           file://port3_default.sh \
-           file://port4_default.sh \
-           file://port5_default.sh \
-           file://port6_default.sh \
-           file://port9_default.sh \
-           file://port10_default.sh"
+           file://copper_setting.sh"
 
 do_install() {
     install -d ${D}${sysconfdir}/init.d/
