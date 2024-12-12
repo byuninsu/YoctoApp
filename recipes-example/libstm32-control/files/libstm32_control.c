@@ -184,8 +184,10 @@ void sendBootCondition(void) {
     printf("rx_buf[0]: %02X\n", spi_rx_buf[0]);
 
     //MCU로 인한 재부팅처리 NVRAM에 기록
-    if(spi_rx_buf[0] == 0x01){
+    if(spi_rx_buf[0] == 0x03){
         WriteBootCondition(0x03);
+    } else if (spi_rx_buf[0] == 0x05){
+        WriteBootCondition(0x05);
     } else {
         WriteBootCondition(0x02);
     }
@@ -271,6 +273,7 @@ uint8_t  sendKeepAlive(void){
 uint8_t  sendCommandTimeout(uint8_t timeout){
     return sendSetTimeout(STM32_SPI_SEND_SETTIMEOUT, timeout);
 }
+
 
 
 

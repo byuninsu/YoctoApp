@@ -8,21 +8,25 @@
 #include <termios.h>
 #include <fcntl.h>
 #include <sys/socket.h>
-
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "cJSON.h"
 #include "stm32_control.h"
 #include "rs232_control.h"
+#include "usb_control.h"
 #include "ethernet_control.h"
 #include "discrete_in.h"
 #include "led_control.h"
 #include "nvram_control.h"
 #include "bit_manager.h"
+#include "optic_control.h"
 
 #define RECEIVE_PORT 8080        // Listening port
 #define SEND_PORT 8060        // Sending port
 #define BUFFER_SIZE 1024
 #define OPCODE_SIZE 10  // OPCode 크기 정의
+#define ENV_OPCODE_SIZE 7  // ENV_OPCode 크기 정의
 #define MAX_PARM_SIZE 256  // Parm 최대 크기 정의
 #define BROADCAST_IP "255.255.255.255"  // 브로드캐스트 주소
 #define SETTING_IP "192.168.10.110"  // IP 셋팅 주소
@@ -30,6 +34,7 @@
 #define BOOT_SIL_MODE "1"  
 #define BOOT_NOMAL_MODE "0"  
 #define MAX_INTERFACE_NAME 16
+#define CONFIG_FILE "/home/ethernet_test/ethernet_test_config"
 
 //OPCODE 정의
 #define OPCODE_DISCRETE_IN "CSRICR0001"
@@ -42,9 +47,9 @@
 #define OPCODE_OS_SSD_BITE_TEST "CSRICR0006" 
 #define OPCODE_INIT_NVRAM_SSD "CSRICR0005"
 #define OPCODE_ETHERNET_COPPER_OPTIC "SSRICR0002"
-#define OPCODE_RS232_USB_EN_DISABLE "CSRICR0003"  
-
-
+#define OPCODE_RS232_USB_EN_DISABLE "CSRICR0002"  
+#define OPCODE_PUSH_BUTTON_CHECK "SSRSMR0006"
+#define OPCODE_WATCHDOG_TIMEOUT "CSRSMR0001"
 
 
 typedef struct {
@@ -58,9 +63,14 @@ typedef struct {
 // 함수 프로토타입 추가
 void processingDiscreteIn(const char *Parm, uint16_t sequenceCount);
 void processingBootCondition(const char Parm[], uint16_t sequenceCount);
+void processingPushbutton(uint16_t sequenceCount);
 void processingBitResult(const char Parm[], uint16_t sequenceCount, uint32_t requestBit);
 void processingBitSave(const char Parm[], uint16_t sequenceCount);
 void processingDiscreteOut(const char Parm[], uint16_t sequenceCount);
+void processingInitSSDNvram(const char Parm[], uint16_t sequenceCount);
+void processingEthernetSetting(const char Parm[], uint16_t sequenceCount, uint8_t type);
+void processingInitUsbRs232EnDisable(const char Parm[], uint16_t sequenceCount, uint8_t act);
+void processingWatchdogTimeout(uint16_t sequenceCount);
 int init_recv_socket();
 int init_send_socket();
 void *receive_and_parse_message(void *arg);
@@ -70,6 +80,10 @@ uint16_t parse_binary_string(const char *binary_str);
 void uint16_to_binary_string(uint16_t value, char *output, size_t output_size);
 void broadcastSendMessage(const Message *message); 
 void processingSSDBite(const char Parm[], uint16_t sequenceCount, uint8_t ssd_type);
+void updateConfigFile(const char *opcode, int status);
+int readConfigFile(const char *opcode);
+void ensureConfigDirectoryExists();
+void checkAndProcessOpcodes();
 
 
 // 전역 변수와 플래그 선언
@@ -194,7 +208,7 @@ void *receive_and_parse_message(void *arg) {
         msg.SizeofParm = sizeofParm;
 
         // Parm 값이 없는 경우: 응답 메시지 구성
-        if (msg.SizeofParm == 0) {
+        if (msg.SizeofParm == 0 && msg.SequenceCount == 0) {
             Message responseMsg = {0};
 
             // OPCode 복사
@@ -223,7 +237,10 @@ void *receive_and_parse_message(void *arg) {
         } else if (memcmp(msg.OPCode, OPCODE_BOOT_CONDITION, OPCODE_SIZE) == 0) {
             printf("Received OPCODE_BOOT_CONDITION message\n\n");
             processingBootCondition(msg.Parm, msg.SequenceCount +1 );
-        }  else if (memcmp(msg.OPCode, OPCODE_BIT_TEST_PBIT, OPCODE_SIZE) == 0) {
+        } else if (memcmp(msg.OPCode, OPCODE_PUSH_BUTTON_CHECK, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_PUSH_BUTTON_CHECK message\n\n");
+            processingPushbutton(msg.SequenceCount);
+        } else if (memcmp(msg.OPCode, OPCODE_BIT_TEST_PBIT, OPCODE_SIZE) == 0) {
             printf("Received OPCODE_BIT_TEST_PBIT message\n\n");
             uint32_t bit_state = 2;
             processingBitResult(msg.Parm, msg.SequenceCount +1, bit_state);
@@ -253,16 +270,23 @@ void *receive_and_parse_message(void *arg) {
             uint8_t copper = 1;
             uint8_t optic = 2;
             if ( msg.SequenceCount == 2) {
-                processingEthernetSetting(msg.Parm, msg.SequenceCount +1, optic);
+                processingEthernetSetting(msg.Parm, msg.SequenceCount, optic);
             }
         } else if (memcmp(msg.OPCode, OPCODE_RS232_USB_EN_DISABLE, OPCODE_SIZE) == 0) {
             printf("Received OPCODE_RS232_USB_EN_DISABLE message\n\n");
             uint8_t inputAct = 1; 
             uint8_t inputDeAct = 1; 
-            processingInitUsbRs232EnDisable(msg.Parm, msg.SequenceCount +1, inputDeAct);
+
+            if( msg.SequenceCount == 3 ) {
+                processingInitUsbRs232EnDisable(msg.Parm, msg.SequenceCount, inputAct);
+            } else if ( msg.SequenceCount == 0 ) {
+                processingInitUsbRs232EnDisable(msg.Parm, msg.SequenceCount+1 , inputDeAct);
+            }
+        } else if (memcmp(msg.OPCode, OPCODE_WATCHDOG_TIMEOUT, OPCODE_SIZE) == 0) {
+            printf("Received OPCODE_WATCHDOG_TIMEOUT message\n\n");
+            processingWatchdogTimeout(msg.SequenceCount +1);
         }
     }
-
     return NULL;
 }
 
@@ -286,9 +310,11 @@ void processingDiscreteIn(const char Parm[], uint16_t sequenceCount) {
         return;
     }
 
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
     // 메시지 필드 설정
     strncpy(message->OPCode, OPCODE_DISCRETE_IN, OPCODE_SIZE);
-    message->OPCode[OPCODE_SIZE] = '\0'; // 널 문자 추가
     message->SequenceCount = sequenceCount;
     message->SizeofParm = parmLength;
 
@@ -327,9 +353,11 @@ void processingDiscreteOut(const char Parm[], uint16_t sequenceCount) {
         return;
     }
 
-    // 메시지 필드 설정
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
     strncpy(message->OPCode, OPCODE_DISCRETE_OUT, OPCODE_SIZE);
-    message->OPCode[OPCODE_SIZE - 1] = '\0'; // 널 문자 추가 (OPCODE_SIZE는 널 포함 크기라고 가정)
+    //message->OPCode[OPCODE_SIZE - 1] = '\0'; // 널 문자 추가 (OPCODE_SIZE는 널 포함 크기라고 가정)
 
     message->SequenceCount = sequenceCount;
     message->SizeofParm = parmLength;
@@ -371,9 +399,11 @@ void processingInitSSDNvram(const char Parm[], uint16_t sequenceCount) {
         return;
     }
 
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
     // 메시지 필드 설정
     strncpy(message->OPCode, OPCODE_INIT_NVRAM_SSD, OPCODE_SIZE);
-    message->OPCode[OPCODE_SIZE - 1] = '\0'; // 널 문자 추가
 
     message->SequenceCount = sequenceCount;
     message->SizeofParm = parmLength;
@@ -381,6 +411,7 @@ void processingInitSSDNvram(const char Parm[], uint16_t sequenceCount) {
     // 초기화 결과를 Parm에 저장
     message->Parm[0] = (initSSD == 0) ? '1' : '0';  // SSD 초기화 결과
     message->Parm[1] = (initNVRAM == 0) ? '1' : '0'; // NVRAM 초기화 결과
+    message->Parm[2] = '\0'; // Null-terminate 추가 (안전)
 
     // 메시지 브로드캐스트 전송
     broadcastSendMessage(message);
@@ -420,15 +451,17 @@ void processingEthernetSetting(const char Parm[], uint16_t sequenceCount, uint8_
         return;
     }
 
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
     // 메시지 필드 설정
     strncpy(message->OPCode, OPCODE_ETHERNET_COPPER_OPTIC, OPCODE_SIZE);
-    message->OPCode[OPCODE_SIZE - 1] = '\0'; // 널 문자 추가
 
     message->SequenceCount = sequenceCount;
     message->SizeofParm = parmLength;
 
     // 초기화 결과를 Parm에 저장
-    message->Parm[0] = (result == 0) ? '1' : '0';  // 성공: '1', 실패: '0'
+    message->Parm[0] = (result == 0) ? '0' : '1';  // 성공: '0', 실패: '1'
 
     // 메시지 브로드캐스트 전송
     broadcastSendMessage(message);
@@ -454,11 +487,15 @@ void processingInitUsbRs232EnDisable(const char Parm[], uint16_t sequenceCount, 
     sequenceCount++;
 
     if( act == 1 ) {
+        printf("ActivateRS232 ++\n");
         resultOfRs232 = ActivateRS232();
+        printf("ActivateUSB ++\n");
         resultOfUSB = ActivateUSB();
         
     } else {
+        printf("DeactivateRS232 ++\n");
         resultOfRs232 = DeactivateRS232();
+        printf("DeactivateUSB ++\n");
         resultOfUSB = DeactivateUSB();
     }
 
@@ -472,18 +509,20 @@ void processingInitUsbRs232EnDisable(const char Parm[], uint16_t sequenceCount, 
         return;
     }
 
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
     // 메시지 필드 설정
     strncpy(message->OPCode, OPCODE_RS232_USB_EN_DISABLE, OPCODE_SIZE);
-    message->OPCode[OPCODE_SIZE - 1] = '\0'; // 널 문자 추가
 
     message->SequenceCount = sequenceCount;
     message->SizeofParm = parmLength;
 
     // 결과를 Parm에 저장
     if (resultOfRs232 == 0 && resultOfUSB == 0) {
-        message->Parm[0] = '1'; // 성공
+        message->Parm[0] = '0'; // 성공
     } else {
-        message->Parm[0] = '0'; // 실패
+        message->Parm[0] = '1'; // 실패
     }
 
     // 메시지 브로드캐스트 전송
@@ -497,20 +536,31 @@ void processingInitUsbRs232EnDisable(const char Parm[], uint16_t sequenceCount, 
 void processingBootCondition(const char Parm[], uint16_t sequenceCount) {
     printf("processingBootCondition ++\n");
 
-    // Boot Condition 값 읽기
-    uint8_t readBootConditionValue = ReadBootCondition();
-
-    // Parm 길이 설정 (항상 1)
-    uint16_t parmLength = 1;
-
-    // 메시지 동적 할당
+        // 메시지 동적 할당
     Message *message = (Message *)malloc(sizeof(Message));
     if (!message) {
         perror("Failed to allocate memory for message");
         return;
     }
 
-    // 메시지 필드 설정
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
+    // Boot Condition 값 읽기
+    uint8_t readBootConditionValue = ReadBootCondition();
+    uint8_t sincValue = readBootConditionValue -2;
+
+    if ( readBootConditionValue == 5 ){
+        sincValue = 2;
+    }
+
+    // Parm 설정 (Boot Condition 값 사용)
+    message->Parm[0] = '0' + sincValue;  // 정수를 ASCII로 변환
+    message->Parm[1] = '\0';  // Null-terminate
+
+    // Parm 길이 설정 (항상 1)
+    uint16_t parmLength = 1;
+
     // OPCode 설정
     strncpy(message->OPCode, OPCODE_BOOT_CONDITION, OPCODE_SIZE);
     message->OPCode[OPCODE_SIZE] = '\0';  // Null-terminate
@@ -518,10 +568,6 @@ void processingBootCondition(const char Parm[], uint16_t sequenceCount) {
     // SequenceCount 증가 및 설정
     sequenceCount ++;
     message->SequenceCount = sequenceCount;
-
-    // Parm 설정 (Boot Condition 값 사용)
-    message->Parm[0] = '0' + readBootConditionValue;  // 정수를 ASCII로 변환
-    message->Parm[1] = '\0';  // Null-terminate
 
     // SizeofParm 설정
     message->SizeofParm = parmLength;
@@ -535,7 +581,61 @@ void processingBootCondition(const char Parm[], uint16_t sequenceCount) {
     printf("processingBootCondition --\n");
 }
 
+void processingPushbutton(uint16_t sequenceCount) {
+    printf("processingPushbutton ++\n");
 
+    if( sequenceCount == 0 ) {
+        updateConfigFile(OPCODE_PUSH_BUTTON_CHECK, 1);
+    } else if ( sequenceCount == 1 ) {
+        // 메시지 동적 할당
+        Message *message = (Message *)malloc(sizeof(Message));
+        if (!message) {
+            perror("Failed to allocate memory for message");
+            return;
+        }
+
+        // 메시지 필드 초기화
+        memset(message, 0, sizeof(Message));
+
+        // Boot Condition 값 읽기
+        uint8_t readBootConditionValue = ReadBootCondition();
+        uint8_t sincValue = readBootConditionValue -2;
+
+        printf( " readBootConditionValue : %d ", readBootConditionValue);
+
+        if ( readBootConditionValue == 5 ){
+            printf( " readBootConditionValue is 5");
+            sincValue = 2;
+        }
+
+        // Parm 설정 (Boot Condition 값 사용)
+        message->Parm[0] = '0' + sincValue;  // 정수를 ASCII로 변환
+        message->Parm[1] = '\0';  // Null-terminate
+
+        // Parm 길이 설정 (항상 1)
+        uint16_t parmLength = 1;
+
+        // OPCode 설정
+        strncpy(message->OPCode, OPCODE_PUSH_BUTTON_CHECK, OPCODE_SIZE);
+        message->OPCode[OPCODE_SIZE] = '\0';  // Null-terminate
+
+        // SequenceCount 증가 및 설정
+        sequenceCount ++;
+        message->SequenceCount = sequenceCount;
+
+        // SizeofParm 설정
+        message->SizeofParm = parmLength;
+
+        // 메시지 전송
+        broadcastSendMessage(message);
+
+        // 메모리 해제
+        free(message);
+    }
+    printf("processingPushbutton --\n");
+}
+
+//BIT TEST 수행
 void processingBitResult(const char Parm[], uint16_t sequenceCount, uint32_t requestBit) {
     printf("processingBitResult ++\n");
 
@@ -565,48 +665,67 @@ void processingBitResult(const char Parm[], uint16_t sequenceCount, uint32_t req
     // 항목 개수
     const size_t bitCount = sizeof(bitTestItems) / sizeof(bitTestItems[0]);
 
+    // BIT 상태를 담을 버퍼 (2자리씩 13항목 => 26바이트)
+    char bitResultString[bitCount * 2 + 1]; // 26 + NULL
+    memset(bitResultString, '0', sizeof(bitResultString));
+    bitResultString[bitCount * 2] = '\0'; // Null-terminate
+
     // BIT 결과값 각 항목별 처리
     for (size_t i = 0; i < bitCount; i++) {
         // 각 항목의 비트 상태 확인 (0: 정상, 1: 비정상)
         uint8_t bitStatus = (readBitValue >> i) & 0x01;
 
-        // Parm 길이 설정 (항상 1)
-        uint16_t parmLength = 1;
-
-        // 메시지 동적 할당
-        Message *message = (Message *)malloc(sizeof(Message));
-        if (!message) {
-            perror("Failed to allocate memory for message");
-            return;
+        // 2자리 설정 (정상: "00", 비정상: "01")
+        if (bitStatus == 0) {
+            strncpy(&bitResultString[i * 2], "00", 2);
+        } else {
+            strncpy(&bitResultString[i * 2], "01", 2);
         }
-
-        // OPCode 설정 (요청된 BIT에 따라 결정)
-        if (requestBit == 2) {
-            strncpy(message->OPCode, OPCODE_BIT_TEST_PBIT, OPCODE_SIZE);
-        } else if (requestBit == 3) {
-            strncpy(message->OPCode, OPCODE_BIT_TEST_CBIT, OPCODE_SIZE);
-        } else if (requestBit == 4) {
-            strncpy(message->OPCode, OPCODE_BIT_TEST_IBIT, OPCODE_SIZE);
-        }
-        message->OPCode[OPCODE_SIZE] = '\0';
-
-        // SequenceCount 증가 및 설정
-        sequenceCount++;
-        message->SequenceCount = sequenceCount;
-
-        // Parm 설정 (비트 상태를 ASCII로 변환하여 설정)
-        message->Parm[0] = '0' + bitStatus;  // '0' 또는 '1'
-        message->Parm[1] = '\0';
-
-        // SizeofParm 설정
-        message->SizeofParm = parmLength;
-
-        // 메시지 전송
-        broadcastSendMessage(message);
-
-        // 메모리 해제
-        free(message);
     }
+
+    // 데이터 역순 변환
+    char reversedBitResultString[bitCount * 2 + 1];
+    for (size_t i = 0; i < bitCount * 2; i++) {
+        reversedBitResultString[i] = bitResultString[bitCount * 2 - 1 - i];
+    }
+    reversedBitResultString[bitCount * 2] = '\0'; // Null-terminate
+
+    // 메시지 동적 할당
+    Message *message = (Message *)malloc(sizeof(Message));
+    if (!message) {
+        perror("Failed to allocate memory for message");
+        return;
+    }
+
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
+    // OPCode 설정 (요청된 BIT에 따라 결정)
+    if (requestBit == 2) {
+        strncpy(message->OPCode, OPCODE_BIT_TEST_PBIT, OPCODE_SIZE);
+    } else if (requestBit == 3) {
+        strncpy(message->OPCode, OPCODE_BIT_TEST_CBIT, OPCODE_SIZE);
+    } else if (requestBit == 4) {
+        strncpy(message->OPCode, OPCODE_BIT_TEST_IBIT, OPCODE_SIZE);
+    }
+    message->OPCode[OPCODE_SIZE] = '\0';
+
+    // SequenceCount 증가 및 설정
+    sequenceCount++;
+    message->SequenceCount = sequenceCount;
+
+    // Parm 설정 (역순으로 변환된 비트 결과 문자열 복사)
+    strncpy(message->Parm, reversedBitResultString, sizeof(reversedBitResultString));
+    message->Parm[sizeof(reversedBitResultString) - 1] = '\0'; // Null-terminate
+
+    // SizeofParm 설정
+    message->SizeofParm = strlen(message->Parm);
+
+    // 메시지 전송
+    broadcastSendMessage(message);
+
+    // 메모리 해제
+    free(message);
 
     printf("processingBitResult --\n");
 }
@@ -625,6 +744,9 @@ void processingBitSave(const char Parm[], uint16_t sequenceCount) {
         perror("Failed to allocate memory for message");
         return;
     }
+
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
 
     // OPCode 설정
     strncpy(message->OPCode, OPCODE_BIT_TEST_RESULT_SAVE, OPCODE_SIZE);
@@ -679,39 +801,113 @@ void processingSSDBite(const char Parm[], uint16_t sequenceCount, uint8_t ssd_ty
     size_t totalEntries = sizeof(values) / sizeof(values[0]);
 
     for (size_t i = 0; i < totalEntries; i++) {
-        // 메시지 생성
-        Message message = {0};
+
+        // 메시지 동적 할당
+        Message *message = (Message *)malloc(sizeof(Message));
+        if (!message) {
+            perror("Failed to allocate memory for message");
+            return;
+        }
+
+        // 메시지 필드 초기화
+        memset(message, 0, sizeof(Message));
 
         // OPCode 설정
-        strncpy(message.OPCode, OPCODE_OS_SSD_BITE_TEST, OPCODE_SIZE);
+        strncpy(message->OPCode, OPCODE_OS_SSD_BITE_TEST, OPCODE_SIZE);
 
         // SequenceCount 설정
         sequenceCount++;
-        message.SequenceCount = sequenceCount;
+        message->SequenceCount = sequenceCount;
 
         uint16_t parmLength = 0;
 
         // 첫 번째 메시지에서는 Parm을 보내지 않음
         parmLength = 0;
-        message.Parm[0] = '\0';
+        message->Parm[0] = '\0';
 
         // Parm 값 설정 (현재 항목의 값만 포함)
-        int ret = snprintf(message.Parm, MAX_PARM_SIZE, "%u", values[i]);
+        int ret = snprintf(message->Parm, MAX_PARM_SIZE, "%u", values[i]);
         if (ret < 0 || ret >= MAX_PARM_SIZE) {
             fprintf(stderr, "Warning: Parm value truncated for entry %zu\n", i);
-            message.Parm[0] = '\0';
+            message->Parm[0] = '\0';
         } else {
-            parmLength = strlen(message.Parm);
+            parmLength = strlen(message->Parm);
         }
         
         // SizeofParm 설정
-        message.SizeofParm = parmLength;
+        message->SizeofParm = parmLength;
 
         // 메시지 전송
-        broadcastSendMessage(&message);
+        broadcastSendMessage(message);
     }
 
     printf("processingSSDBite --\n");
+}
+
+
+void processingWatchdogTimeout(uint16_t sequenceCount) {
+    printf("processingWatchdogTimeout ++\n");
+    uint8_t timeoutSecond = 60;
+    uint8_t settingValue = timeoutSecond / 2;  
+
+    // 메시지 동적 할당
+    Message *message = (Message *)malloc(sizeof(Message));
+    if (!message) {
+        perror("Failed to allocate memory for message");
+        return;
+    }
+
+    if( sequenceCount == 0 ) {
+        // 타임아웃 기간 30초 설정
+        sendCommandTimeout(timeoutSecond);
+        // Parm 설정: 타임아웃시간 전송(초단위)
+        snprintf(message->Parm, MAX_PARM_SIZE, "%d", settingValue);
+
+    } else if ( sequenceCount == 3 ) {
+        sendStartWatchdog();
+        // Parm 설정: 타임아웃 시간 전송(초단위)
+        snprintf(message->Parm, MAX_PARM_SIZE, "%d", settingValue);
+    } else if ( sequenceCount == 5 ) {
+        // 디렉토리가 없는 경우 생성
+        ensureConfigDirectoryExists();
+        // 설정 파일에 테스트 지속 상태 기록
+        updateConfigFile(OPCODE_WATCHDOG_TIMEOUT, 1);
+        printf("Recorded OPCODE_WATCHDOG_TIMEOUT as active (1) in the config file.\n");
+
+    } else if ( sequenceCount == 7 ) {
+        // Boot Condition 값 읽기
+        uint8_t readBootConditionValue = ReadBootCondition();
+        uint8_t sincValue = readBootConditionValue -2;
+
+        if ( readBootConditionValue == 5 ){
+            sincValue = 2;
+        }
+        // Parm 설정 (Boot Condition 값 사용)
+        message->Parm[0] = '0' + sincValue;  // 정수를 ASCII로 변환
+        message->Parm[1] = '\0';  // Null-terminate
+    }
+
+    // 메시지 필드 초기화
+    memset(message, 0, sizeof(Message));
+
+    // OPCode 설정
+    strncpy(message->OPCode, OPCODE_WATCHDOG_TIMEOUT, OPCODE_SIZE);
+    message->OPCode[OPCODE_SIZE] = '\0';  // Null-terminate
+
+    // SequenceCount 증가 및 설정
+    sequenceCount++;
+    message->SequenceCount = sequenceCount;
+
+    // SizeofParm 설정: Parm의 실제 데이터 길이 계산
+    message->SizeofParm = strlen(message->Parm);
+
+    // 메시지 전송
+    broadcastSendMessage(message);
+
+    // 메모리 해제
+    free(message);
+
+    printf("processingWatchdogTimeout --\n");
 }
 
 
@@ -730,10 +926,10 @@ void broadcastSendMessage(const Message *message) {
 
     // 문자열로 변환
     char sendBuffer[BUFFER_SIZE];
-    int offset = snprintf(sendBuffer, sizeof(sendBuffer), "%.*s%s%s", 
-                          OPCODE_SIZE, message->OPCode, 
-                          sequenceCountStr, 
-                          sizeofParmStr);
+    int offset = snprintf(sendBuffer, sizeof(sendBuffer), "%s%s%s", 
+                        message->OPCode, 
+                        sequenceCountStr, 
+                        sizeofParmStr);
 
     // Parm 추가
     if (message->SizeofParm > 0) {
@@ -795,6 +991,8 @@ void start_broadcast(void) {
         return;
     }
 
+    checkAndProcessOpcodes();
+
     pthread_join(receiveThread, NULL);
 }
 
@@ -843,6 +1041,80 @@ uint16_t parse_binary_string(const char *binary_str) {
     return result;
 }
 
+// 설정 파일에 데이터를 기록
+void updateConfigFile(const char *opcode, int status) {
+    FILE *file = fopen(CONFIG_FILE, "a");
+    if (!file) {
+        perror("Failed to open config file for writing");
+        return;
+    }
+
+    // OPCODE와 상태를 기록
+    fprintf(file, "%s=%d\n", opcode, status);
+    fclose(file);
+}
+
+// 설정 파일에서 데이터 읽기
+int readConfigFile(const char *opcode) {
+    FILE *file = fopen(CONFIG_FILE, "r");
+    if (!file) {
+        perror("Failed to open config file for reading");
+        return -1; // 파일 없음
+    }
+
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        char key[128];
+        int value;
+        if (sscanf(line, "%127[^=]=%d", key, &value) == 2) {
+            if (strcmp(key, opcode) == 0) {
+                fclose(file);
+                return value; // 해당 OPCODE의 값 반환
+            }
+        }
+    }
+
+    fclose(file);
+    return -1; // OPCODE를 찾지 못함
+}
+
+// 활성화된 OPCODE 확인 및 처리
+void checkAndProcessOpcodes() {
+    // 설정 파일이 있는지 확인
+    struct stat buffer;
+    if (stat(CONFIG_FILE, &buffer) != 0) {
+        printf("Config file not found. Skipping OPCODE processing.\n");
+        return;
+    }
+
+    // "CSRSMR0001" 상태 확인 (WATCHDOG_TIMEOUT OPCODE)
+    int watchdogTimeoutStatus = readConfigFile("CSRSMR0001");
+    int pushButtonStatus = readConfigFile("CSRSMR0006");
+
+    if (watchdogTimeoutStatus == 1) {
+        printf("OPCODE CSRSMR0001 is active. Executing processingWatchdogTimeout()...\n");
+        processingWatchdogTimeout(7); // 초기 시퀀스 카운트 전달
+    }
+
+    if (pushButtonStatus == 1) {
+        printf("OPCODE CSRSMR0006 is active. Executing processingPushbutton()...\n");
+        processingPushbutton(1); // 초기 시퀀스 카운트 전달
+    }
+
+    if (watchdogTimeoutStatus != 1 && pushButtonStatus != 1) {
+        printf("No active OPCODEs found.\n");
+    }
+}
+
+
+// 디렉토리 존재 확인 및 생성
+void ensureConfigDirectoryExists() {
+    struct stat st = {0};
+    if (stat("/home/ethernet_test", &st) == -1) {
+        mkdir("/home/ethernet_test", 0700);
+    }
+}
+
 void configureNetwork() {
     char interface[MAX_INTERFACE_NAME] = {0};
     const char *downInterface = NULL;
@@ -884,6 +1156,8 @@ void configureNetwork() {
         return;
     }
 
+    usleep(10000);
+
     // Step 4: Add default gateway
     if (system("route add default gw 192.168.10.1") != 0) {
         fprintf(stderr, "Failed to add default gateway.\n");
@@ -894,13 +1168,6 @@ void configureNetwork() {
     snprintf(command, sizeof(command), "route add -net 192.168.10.0 netmask 255.255.255.0 dev %s", interface);
     if (system(command) != 0) {
         fprintf(stderr, "Failed to add route for 192.168.10.0/24.\n");
-        return;
-    }
-
-    // Step 6: Test connectivity with ping
-    printf("Testing connectivity with ping...\n");
-    if (system("ping -c 4 192.168.10.33") != 0) {
-        fprintf(stderr, "Ping test failed.\n");
         return;
     }
 
@@ -921,13 +1188,18 @@ void uint16_to_binary_string(uint16_t value, char *output, size_t output_size) {
     }
 }
 
+
 int main(int argc, char *argv[]) {
-    if (argc < 3) {
-        printf("Usage: %s <broadcast> <start/stop>\n", argv[0]);
+    if (argc < 2) {
+        printf("Usage: %s <broadcast> <start/stop> | <set> | <test usb enable/disable>\n", argv[0]);
         return 1;
     }
 
     if (strcmp(argv[1], "broadcast") == 0) {
+        if (argc < 3) {
+            printf("Usage: %s broadcast <start/stop>\n", argv[0]);
+            return 1;
+        }
         if (strcmp(argv[2], "start") == 0) {
             start_broadcast();
         } else if (strcmp(argv[2], "stop") == 0) {
@@ -938,9 +1210,32 @@ int main(int argc, char *argv[]) {
     } else if (strcmp(argv[1], "set") == 0) {
         printf("Set the IpAddr : %s.\n", SETTING_IP);
         configureNetwork();
+    } else if (strcmp(argv[1], "test") == 0) {
+        if (argc < 4) {
+            printf("Usage: %s test usb <enable/disable>\n", argv[0]);
+            return 1;
+        }
+        if (strcmp(argv[2], "usb") == 0) {
+            if (strcmp(argv[3], "enable") == 0) {
+                ActivateUSB();
+            } else if (strcmp(argv[3], "disable") == 0) {
+                DeactivateUSB();
+            } else {
+                printf("Invalid command. Use 'enable' or 'disable'.\n");
+            }
+        } else if (strcmp(argv[2], "rs232") == 0) {
+            printf("Invalid test command. Use 'usb'.\n");
+            if (strcmp(argv[3], "enable") == 0) {
+                ActivateRS232();
+            } else if (strcmp(argv[3], "disable") == 0) {
+                DeactivateRS232();
+            } else {
+                printf("Invalid command. Use 'enable' or 'disable'.\n");
+            }
+        }
+    } else {
+        printf("Invalid command. Use 'broadcast', 'set', or 'test'.\n");
     }
-
-
 
     return 0;
 }
