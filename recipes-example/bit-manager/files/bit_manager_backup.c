@@ -8,6 +8,7 @@
 #include <linux/sockios.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <time.h>
 #include <linux/nvme_ioctl.h>
 #include <sys/mount.h>
 #include "cJSON.h"
@@ -45,7 +46,7 @@ const char* itemNames[] = {
     "Discrete Output",
     "RS232 Transceiver",
     "SSD (Boot OS)",
-    "1G Ethernet Switch",
+    "10G Ethernet Switch",
     "Optic Transceiver",
     "Temperature Sensor",
     "Power Monitor"
@@ -137,10 +138,6 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
 
     // Write mtype and timestamp
     fprintf(logFile, ",\"mtype\":%u,\"timestamp\":\"%s\"}\n", mtype, timestamp);
-
-    // 캐시 플러시 및 디스크 동기화
-    fflush(logFile);  // 캐시 플러시
-    fsync(fileno(logFile)); // 디스크 동기화
 
     // Close the log file
     fclose(logFile);
@@ -710,55 +707,52 @@ int checkOptic(void){
     
 }
 
-void RequestBit(uint32_t mtype) {
+void  RequestBit(uint32_t mtype) {
+
     uint32_t bitStatus = 0;
 
-    // DEBUG: 초기화 메시지 출력
-    printf("Starting RequestBit function, mtype = 0x%08X\n", mtype);
+    // 각 상태를 순서대로 비트에 저장
+    bitStatus |= (checkGPU() << 0);                     // GPU 상태 (비트 0)
+    bitStatus |= (check_ssd("data") << 1);              // 데이터 SSD 상태 (비트 1)
+    bitStatus |= (check_gpio_expander() << 2);          // GPIO Expander 상태 (비트 2)
+    bitStatus |= (checkEthernet() << 3);                // Ethernet 상태 (비트 3)
+    bitStatus |= (checkNvram() << 4);                   // NVRAM 상태 (비트 4)
+    bitStatus |= (checkDiscrete_in() << 5);             // Discrete In 상태 (비트 5)
+    bitStatus |= (check_discrete_out() << 6);           // Discrete Out 상태 (비트 6)
+    bitStatus |= (checkRs232() << 7);                   // RS232 상태 (비트 7)
+    bitStatus |= (check_ssd("os") << 8);                // OS SSD 상태 (비트 8)
+    bitStatus |= (checkEthernetSwitch() << 9);          // Ethernet Switch 상태 (비트 9)
+    bitStatus |= (checkOptic() << 10);                  // Optic Transceiver 상태 (비트 10)
+    bitStatus |= (checkTempSensor() << 11);             // 온도 센서 상태 (비트 11)
+    bitStatus |= (checkPowerMonitor() << 12);           // 전력 모니터 상태 (비트 12)
 
-    // 상태 체크 (bitStatus에 저장)
-    bitStatus |= ((checkGPU() != 0) << 0);                     // GPU 상태
-    bitStatus |= ((check_ssd("data") != 0) << 1);              // 데이터 SSD 상태
-    bitStatus |= ((check_gpio_expander() != 0) << 2);          // GPIO Expander 상태
-    bitStatus |= ((checkEthernet() != 0) << 3);                // Ethernet 상태
-    bitStatus |= ((checkNvram() != 0) << 4);                   // NVRAM 상태
-    bitStatus |= ((checkDiscrete_in() != 0) << 5);             // Discrete In 상태
-    bitStatus |= ((check_discrete_out() != 0) << 6);           // Discrete Out 상태
-    bitStatus |= ((checkRs232() != 0) << 7);                   // RS232 상태
-    bitStatus |= ((check_ssd("os") != 0) << 8);                // OS SSD 상태
-    bitStatus |= ((checkEthernetSwitch() != 0) << 9);          // Ethernet Switch 상태
-    bitStatus |= ((checkOptic() != 0) << 10);                  // Optic Transceiver 상태
-    bitStatus |= ((checkTempSensor() != 0) << 11);             // 온도 센서 상태
-    bitStatus |= ((checkPowerMonitor() != 0) << 12);           // 전력 모니터 상태
 
-    // 플래그 비트 설정 (31번 비트)
-    bitStatus |= (1 << 31);
+    bitStatus |= (1 << 31); // flag setting
 
-    // 결과 출력 (한 번에 출력)
-    printf("Test Results:\n");
-    printf("GPU = %u\n", (bitStatus >> 0) & 1);
-    printf("SSD(Data) = %u\n", (bitStatus >> 1) & 1);
-    printf("GPIO Expander = %u\n", (bitStatus >> 2) & 1);
-    printf("Ethernet = %u\n", (bitStatus >> 3) & 1);
-    printf("NVRAM = %u\n", (bitStatus >> 4) & 1);
-    printf("Discrete In = %u\n", (bitStatus >> 5) & 1);
-    printf("Discrete Out = %u\n", (bitStatus >> 6) & 1);
-    printf("RS232 = %u\n", (bitStatus >> 7) & 1);
-    printf("SSD(OS) = %u\n", (bitStatus >> 8) & 1);
-    printf("Ethernet Switch = %u\n", (bitStatus >> 9) & 1);
-    printf("Optic Transceiver = %u\n", (bitStatus >> 10) & 1);
-    printf("Temperature Sensor = %u\n", (bitStatus >> 11) & 1);
-    printf("Power Monitor = %u\n", (bitStatus >> 12) & 1);
 
-    // 에러 비트 확인
-    if (bitStatus & 0x7FFFFFFF) {
-        printf("bit error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
+    // 각 상태를 출력
+    printf("GPU module: %u\n", (bitStatus >> 0) & 1);
+    printf("SSD (Data store): %u\n", (bitStatus >> 1) & 1);
+    printf("GPIO Expander: %u\n", (bitStatus >> 2) & 1);
+    printf("Ethernet MAC/PHY: %u\n", (bitStatus >> 3) & 1);
+    printf("NVRAM: %u\n", (bitStatus >> 4) & 1);
+    printf("Discrete Input: %u\n", (bitStatus >> 5) & 1);
+    printf("Discrete Output: %u\n", (bitStatus >> 6) & 1);
+    printf("RS232 Transceiver: %u\n", (bitStatus >> 7) & 1);
+    printf("SSD (Boot OS): %u\n", (bitStatus >> 8) & 1);
+    printf("10G Ethernet Switch: %u\n", (bitStatus >> 9) & 1);
+    printf("Optic Transceiver: %u\n", (bitStatus >> 10) & 1);
+    printf("Temperature Sensor: %u\n", (bitStatus >> 11) & 1);
+    printf("Power Monitor: %u\n", (bitStatus >> 12) & 1);
+
+
+    if (bitStatus & 0x7FFFFFFF) { // 31번 비트를 제외한 나머지 확인
+        printf("bit error occurred, bitStatus: 0x%08X, mtype: 0x%08X.\n", bitStatus, mtype);
         WriteBitErrorData(bitStatus, mtype);
     }
 
-    // 결과 저장
     WriteBitResult(mtype, bitStatus);
-    printf("RequestBit function completed, final bitStatus = 0x%08X\n", bitStatus);
+
 }
 
 uint32_t readtBitResult(uint32_t type) {

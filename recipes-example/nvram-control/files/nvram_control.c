@@ -45,6 +45,15 @@ typedef enum {
     NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR = 0x3C,
     NVRAM_CUMULATIVE_TIME_ADDR = 0x40,
     NVRAM_BOOT_MODE = 0x44,
+
+    //SSD PART NO ADDR (15BYTE)
+    NVRAM_SUPPLIER_PART_NO = 0x48,
+    NVRAM_SSD0_MODEL_NO = 0x57,
+    NVRAM_SSD0_SERIAL_NO = 0x66,
+    NVRAM_SSD1_MODEL_NO = 0x75,
+    NVRAM_SSD1_SERIAL_NO = 0x84,
+    NVRAM_SW_PART_NO = 0x88,
+
     //4 byte addr
     NVRAM_BIT_RESULT_POWERON = 0x24,
     NVRAM_BIT_RESULT_CONTINUOUS = 0x2C,
@@ -434,34 +443,35 @@ uint32_t getNVRAMId(void) {
 }
 
 // NVRAM 전체 초기화 함수
-uint32_t InitializeNVRAMToFF(void) {
+uint32_t InitializeNVRAMToZero(void) {
     uint32_t result = 0;
 
-    printf("Initializing NVRAM to 0xFF...\n");
-
-    // 1바이트 주소 초기화
-    if (WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_ACTIVATED_TEST, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_MAINTENANCE_MODE, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_BOOTING_CONDITION, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_CUMULATIVE_TIME_ADDR, 0xFF)) result = 1;
-    if (WriteNVRAMValue(NVRAM_BOOT_MODE, 0xFF)) result = 1;
+    printf("Initializing NVRAM to 0x00000000...\n");
 
     // 4바이트 주소 초기화
-    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON, 0xFFFFFFFF)) result = 1;
-    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS, 0xFFFFFFFF)) result = 1;
-    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED, 0xFFFFFFFF)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_POWER_ON_COUNT_ADDR, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_NORMAL_MODE_COUNT_ADDR, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_CONTAINER_START_COUNT_ADDR, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, 0x00000000)) result = 1;
+
+    if (WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_MAINTENANCE_MODE, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_BOOTING_CONDITION, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_BOOT_MODE, 0x00000000)) result = 1;
+
+    // 추가 4바이트 주소 초기화
+    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS, 0x00000000)) result = 1;
+    if (WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED, 0x00000000)) result = 1;
 
     if (result == 0) {
-        printf("NVRAM initialization to 0xFF completed successfully.\n");
+        printf("NVRAM initialization to 0x00000000 completed successfully.\n");
     } else {
-        printf("NVRAM initialization to 0xFF failed.\n");
+        printf("NVRAM initialization to 0x00000000 failed.\n");
     }
 
     return result;
@@ -516,6 +526,9 @@ uint32_t  WriteBitResult(uint32_t address, uint32_t bitResult) {
         case 4 :
             printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED \n");
             return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED, bitResult);
+        case 12 :
+            printf("WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST \n");
+            return WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST, bitResult);
     }
 
     return 1;
@@ -532,6 +545,8 @@ uint32_t  ReadBitResult(uint32_t address) {
             return ReadNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS);
         case 4 :
             return ReadNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED);
+        case 12 :
+            return ReadNVRAM4ByteValue(NVRAM_ACTIVATED_TEST);
     }
 
     return 1;
@@ -540,21 +555,21 @@ uint32_t  ReadBitResult(uint32_t address) {
 uint32_t   ReadSystemLog(uint32_t nvramAddress) {
     switch (nvramAddress) {
         case 2:
-            return ReadNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR);
+            return ReadNVRAM4ByteValue(NVRAM_POWER_ON_COUNT_ADDR);
         case 3:
-            return ReadNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR);
+            return ReadNVRAM4ByteValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR);
         case 4:           
-            return ReadNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR);
+            return ReadNVRAM4ByteValue(NVRAM_NORMAL_MODE_COUNT_ADDR);
         case 5:           
-            return ReadNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR);
+            return ReadNVRAM4ByteValue(NVRAM_CONTAINER_START_COUNT_ADDR);
         case 6:           
-            return ReadNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR);
+            return ReadNVRAM4ByteValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR);
         case 7:          
-            return ReadNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR);
+            return ReadNVRAM4ByteValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR);
         case 8:          
-            return ReadNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR);
+            return ReadNVRAM4ByteValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR);
         case 12:          
-            return ReadNVRAMValue(NVRAM_ACTIVATED_TEST);
+            return ReadNVRAM4ByteValue(NVRAM_ACTIVATED_TEST);
         default:
             return STATUS_ERROR;
     }
@@ -577,19 +592,19 @@ uint32_t  WriteSystemLogTest(uint32_t resetReason, uint32_t value) {
 
        switch (resetReason) {
             case 2:                 
-                 return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, value);
+                 return (NVRAM_POWER_ON_COUNT_ADDR, value);
             case 3:                
-                 return WriteNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, value);
+                 return WriteNVRAM4ByteValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, value);
             case 4:                
-                 return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, value);
+                 return WriteNVRAM4ByteValue(NVRAM_NORMAL_MODE_COUNT_ADDR, value);
             case 5:                 
-                 return WriteNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR, value);
+                 return WriteNVRAM4ByteValue(NVRAM_CONTAINER_START_COUNT_ADDR, value);
             case 6:                
-                 return WriteNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, value);
+                 return WriteNVRAM4ByteValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, value);
             case 7: 
-                 return WriteNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, value); 
+                 return WriteNVRAM4ByteValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, value); 
             case 12: 
-                 return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, value);
+                 return WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST, value);
             default:
                  return STATUS_ERROR;
         }
@@ -602,24 +617,110 @@ uint32_t  WriteSystemLogReasonCount(uint32_t resetReason) {
 
        switch (resetReason) {
             case 2:                 
-                 return WriteNVRAMValue(NVRAM_POWER_ON_COUNT_ADDR, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_POWER_ON_COUNT_ADDR, writeValue);
             case 3:                
-                 return WriteNVRAMValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_MAINTENANCE_MODE_COUNT_ADDR, writeValue);
             case 4:                
-                 return WriteNVRAMValue(NVRAM_NORMAL_MODE_COUNT_ADDR, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_NORMAL_MODE_COUNT_ADDR, writeValue);
             case 5:                 
-                 return WriteNVRAMValue(NVRAM_CONTAINER_START_COUNT_ADDR, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_CONTAINER_START_COUNT_ADDR, writeValue);
             case 6:                
-                 return WriteNVRAMValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR, writeValue);
             case 7: 
-                 return WriteNVRAMValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, writeValue);
             case 8: 
-                 return WriteNVRAMValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, writeValue);  
+                 return WriteNVRAM4ByteValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, writeValue);  
             case 12: 
-                 return WriteNVRAMValue(NVRAM_ACTIVATED_TEST, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST, writeValue);
             default:
                  return STATUS_ERROR;
         }
+}
+
+// NVRAM에 구조체 저장 함수
+uint32_t WriteHwCompatInfoToNVRAM(const struct hwCompatInfo *info) {
+    uint32_t result = 0;
+
+    // `supplier_part_no` 저장 (11 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->supplier_part_no); i++) {
+        result |= WriteNVRAMValue(NVRAM_SUPPLIER_PART_NO + i, info->supplier_part_no[i]);
+    }
+
+    // `ssd0_model_no` 저장 (13 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd0_model_no); i++) {
+        result |= WriteNVRAMValue(NVRAM_SSD0_MODEL_NO + i, info->ssd0_model_no[i]);
+    }
+
+    // `ssd0_serial_no` 저장 (10 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd0_serial_no); i++) {
+        result |= WriteNVRAMValue(NVRAM_SSD0_SERIAL_NO + i, info->ssd0_serial_no[i]);
+    }
+
+    // `ssd1_model_no` 저장 (12 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd1_model_no); i++) {
+        result |= WriteNVRAMValue(NVRAM_SSD1_MODEL_NO + i, info->ssd1_model_no[i]);
+    }
+
+    // `ssd1_serial_no` 저장 (14 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd1_serial_no); i++) {
+        result |= WriteNVRAMValue(NVRAM_SSD1_SERIAL_NO + i, info->ssd1_serial_no[i]);
+    }
+
+    // `sw_part_number` 저장 (11 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->sw_part_number); i++) {
+        result |= WriteNVRAMValue(NVRAM_SW_PART_NO + i, info->sw_part_number[i]);
+    }
+
+    return result;
+}
+
+// NVRAM에서 구조체 데이터를 읽어오는 함수
+uint32_t ReadHwCompatInfoFromNVRAM(struct hwCompatInfo *info) {
+    uint32_t result = 0;
+
+    // `supplier_part_no` 읽기 (11 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->supplier_part_no); i++) {
+        uint8_t value = ReadNVRAMValue(NVRAM_SUPPLIER_PART_NO + i);
+        info->supplier_part_no[i] = value;
+        if (value == '\0') break; // Null terminator 찾으면 종료
+    }
+
+    // `ssd0_model_no` 읽기 (13 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd0_model_no); i++) {
+        uint8_t value = ReadNVRAMValue(NVRAM_SSD0_MODEL_NO + i);
+        info->ssd0_model_no[i] = value;
+        if (value == '\0') break; // Null terminator 찾으면 종료
+    }
+
+    // `ssd0_serial_no` 읽기 (10 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd0_serial_no); i++) {
+        uint8_t value = ReadNVRAMValue(NVRAM_SSD0_SERIAL_NO + i);
+        info->ssd0_serial_no[i] = value;
+        if (value == '\0') break; // Null terminator 찾으면 종료
+    }
+
+    // `ssd1_model_no` 읽기 (12 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd1_model_no); i++) {
+        uint8_t value = ReadNVRAMValue(NVRAM_SSD1_MODEL_NO + i);
+        info->ssd1_model_no[i] = value;
+        if (value == '\0') break; // Null terminator 찾으면 종료
+    }
+
+    // `ssd1_serial_no` 읽기 (14 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->ssd1_serial_no); i++) {
+        uint8_t value = ReadNVRAMValue(NVRAM_SSD1_SERIAL_NO + i);
+        info->ssd1_serial_no[i] = value;
+        if (value == '\0') break; // Null terminator 찾으면 종료
+    }
+
+    // `sw_part_number` 읽기 (11 bytes + null terminator)
+    for (size_t i = 0; i < sizeof(info->sw_part_number); i++) {
+        uint8_t value = ReadNVRAMValue(NVRAM_SW_PART_NO + i);
+        info->ssd1_serial_no[i] = value;
+        if (value == '\0') break; // Null terminator 찾으면 종료
+    }
+
+    return result;
 }
 
 

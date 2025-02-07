@@ -15,7 +15,7 @@ DEBUG_APP="/usr/bin/debug-app"
 start() {
     echo "Running bootcondition command from debug-app..."
     # Run the bootcondition command
-    $DEBUG_APP bootcondition
+    # $DEBUG_APP bootcondition
     echo "bootcondition command executed."
 }
 

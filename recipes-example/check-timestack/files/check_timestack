@@ -1,0 +1,46 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          init_check_timestack
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Time and SSD Usage Logger
+# Description:       This script runs the time and SSD usage logger on boot.
+### END INIT INFO
+
+# Time logging 앱 경로
+TIME_LOGGER_PATH="/usr/bin/check_timestack"
+
+start() {
+    echo "Starting time and SSD usage logger..."
+    if [ -f $TIME_LOGGER_PATH ]; then
+        $TIME_LOGGER_PATH &
+    else
+        echo "Time logging binary not found!"
+    fi
+}
+
+stop() {
+    echo "Stopping time and SSD usage logger..."
+    pkill -f $TIME_LOGGER_PATH
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -7,7 +7,7 @@
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 #include <string.h>
-#include "led_control.h"
+#include "libled_control.h"
 
 // 상수 정의
 #define LED_CONTROLLER_ADDR 0x74 // TCA9539의 변경 I2C 주소(led)
@@ -76,73 +76,62 @@ int i2c_write_byte(unsigned char reg, unsigned char value) {
 }
 
 uint32_t setLedState(uint8_t gpio, uint16_t value) {
+    unsigned char reg  = 0;
     unsigned char port_value;
     unsigned char new_value;
+    uint8_t currentValue = 0;
     unsigned char mask = 1 << (gpio % 8);
-    unsigned char conf_mask = mask;
-    unsigned char reg;
-    unsigned char conf_reg;
-
-    uint8_t original_gpio = gpio; // 원래 GPIO 값을 보존
-
-    // GPIO 번호에 따라 레지스터 결정
-    if (gpio < 8) {
-        reg = GPIO_EXPENDER_00P;
-        conf_reg = GPIO_EXPENDER_CONF_00P;
-    } else {
-        gpio -= 8; // 포트 1의 GPIO 핀 번호 조정
-        reg = GPIO_EXPENDER_01P;
-        conf_reg = GPIO_EXPENDER_CONF_01P;
-    }
+    uint8_t original_gpio = gpio; // 원래의 gpio 값을 보존
 
     i2cInit(LED_CONTROLLER_ADDR);
 
-    // 현재 포트 값 읽기
-    if (i2c_read_byte(reg, &port_value) != 0) {
-        fprintf(stderr, "Failed to read from I2C device (reg: 0x%x)\n", reg);
-        i2cClose();
-        return 1;
-    }
-
-    // 새로운 값 계산
-    if (value) {
-        new_value = port_value | mask; // 비트 설정
-    } else {
-        new_value = port_value & ~mask; // 비트 클리어
-    }
-
-    // 새로운 값 쓰기
-    if (i2c_write_byte(reg, new_value) != 0) {
-        fprintf(stderr, "Failed to write to I2C device (reg: 0x%x)\n", reg);
-        i2cClose();
-        return 1;
-    }
-
-    // 설정 레지스터 값 확인 및 수정
-    uint8_t currentValue;
-    if (i2c_read_byte(conf_reg, &currentValue) != 0) {
-        fprintf(stderr, "Failed to read configuration register (reg: 0x%x)\n", conf_reg);
-        i2cClose();
-        return 1;
-    }
-
-    // 특정 비트가 1인 경우만 0으로 수정
-    if (currentValue & conf_mask) {
-        printf("GPIO %d is currently configured as 1, clearing it.\n", original_gpio);
-        currentValue &= ~conf_mask; // 해당 GPIO 비트만 0으로 변경
-        if (i2c_write_byte(conf_reg, currentValue) != 0) {
-            fprintf(stderr, "Failed to write to configuration register (reg: 0x%x)\n", conf_reg);
-            i2cClose();
-            return 1;
+    if (gpio < 8) {
+        // Output Port 0의 현재 값 읽기
+        i2c_read_byte(GPIO_EXPENDER_00P, &port_value);
+        // 새로운 값 설정
+        if (value) {
+            new_value = port_value | mask; // 비트 설정
+        } else {
+            new_value = port_value & ~mask; // 비트 클리어
         }
-        printf("Cleared configuration for GPIO %d\n", original_gpio);
+        // Output Port 0에 새로운 값 쓰기
+        i2c_write_byte(GPIO_EXPENDER_00P, new_value);
     } else {
-        printf("GPIO %d configuration is already cleared (0).\n", original_gpio);
+        gpio -= 8; // 포트 1의 GPIO 핀 번호 조정
+        // Output Port 1의 현재 값 읽기
+        i2c_read_byte(GPIO_EXPENDER_01P, &port_value);
+        // 새로운 값 설정
+        if (value) {
+            new_value = port_value | mask; // 비트 설정
+        } else {
+            new_value = port_value & ~mask; // 비트 클리어
+     
+        }
+        // Output Port 1에 새로운 값 쓰기
+        i2c_write_byte(GPIO_EXPENDER_01P, new_value);
     }
 
-    printf("Set GPIO %d to value %d\n", original_gpio, value);
+    printf("Set GPIO %d to value %d\n", original_gpio, value); // 원래의 gpio 값을 사용하여 출력
+
+
+    if(gpio < 8){
+        reg = GPIO_EXPENDER_CONF_00P;
+    }else if (gpio >= 8 ){
+        reg = GPIO_EXPENDER_CONF_01P;
+    }
+
+    if (i2c_read_byte(reg, &currentValue) != 0) {
+        fprintf(stderr, "Failed to read from I2C device\n");
+        return 1;
+    }
+
+    if(currentValue != 0x00){
+        i2c_write_byte(reg,0x00);
+        printf("set configuration Value : 0xFF"); 
+    }
 
     i2cClose();
+
     return 0;
 }
 

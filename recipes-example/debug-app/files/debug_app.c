@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "watchdog_control.h"
 #include "usb_control.h"
 #include "stm32_control.h"
@@ -12,10 +13,107 @@
 #include "discrete_in.h"
 #include "optic_control.h"
 #include "bit_manager.h"
+#include "cJSON.h"
 
-#define BOOT_NOMAL_MODE 00 
 #define BOOT_SIL_MODE 0x01
 #define BOOT_NOMAL_MODE 0x00  
+
+#define HOLDUP_LOG_FILE_DIR "/mnt/dataSSD/"
+#define HOLDUP_LOG_FILE_NAME "HoldupLog.json"
+#define LOG_FILE_PATH HOLDUP_LOG_FILE_DIR HOLDUP_LOG_FILE_NAME
+
+int keepRunning = 1; // 프로그램 실행 플래그
+
+void InitializeAllLEDs() {
+    for (uint8_t gpio = 0x00; gpio <= 0x0B; gpio++) {
+        if (setLedState(gpio, 0) != STATUS_SUCCESS) {
+            printf("Failed to initialize GPIO 0x%02X\n", gpio);
+        }
+    }
+    printf("All GPIOs initialized to 0.\n");
+}
+
+void startHoldupPFLogging() {
+    printf(" Holdup CC Logging Started...\n");
+    while (keepRunning) {
+        uint8_t ccValue = sendRequestHoldupPF();  // SPI로 값 읽기
+        printf("CC Value: %u\n", ccValue);
+        writeLogToFile(ccValue);  // JSON 로그 저장
+        usleep(10000);
+    }
+    printf("Logging Stopped.\n");
+}
+
+// JSON 로그 파일에 데이터 추가 함수
+void writeLogToFile(uint8_t ccValue) {
+    FILE *file = fopen(LOG_FILE_PATH, "r");
+    cJSON *jsonLog = NULL;
+
+    // 기존 JSON 로그 파일 읽기 (없으면 새로 생성)
+    if (file) {
+        fseek(file, 0, SEEK_END);
+        long fileSize = ftell(file);
+        rewind(file);
+
+        if (fileSize > 0) {
+
+            char *jsonStr = (char *)malloc(fileSize + 1);
+            if (jsonStr == NULL) {
+                fclose(file);
+                printf("ERROR: Memory allocation failed for jsonStr\n");
+                return;
+            }
+            fread(jsonStr, 1, fileSize, file);
+            jsonStr[fileSize] = '\0';
+
+
+            fclose(file);
+
+            jsonLog = cJSON_Parse(jsonStr);
+            free(jsonStr);
+        } else {
+            fclose(file);
+        }
+    }
+
+    // 기존 JSON 파일이 없거나 비어 있으면 새로운 JSON 배열 생성
+    if (!jsonLog) {
+        jsonLog = cJSON_CreateArray();
+    }
+
+    // 현재 시간 추가
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+
+    if (t == NULL) {  
+        printf("ERROR: localtime() failed!\n");
+        return;
+    }
+
+    char timeStr[64];
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", t);
+
+
+    // 새 JSON 객체 생성 {"timestamp": "2025-02-07 12:00:00", "cc_value": 1}
+    cJSON *logEntry = cJSON_CreateObject();
+    cJSON_AddStringToObject(logEntry, "timestamp", timeStr);
+    cJSON_AddNumberToObject(logEntry, "cc_value", ccValue);
+
+    // JSON 배열에 추가
+    cJSON_AddItemToArray(jsonLog, logEntry);
+
+    // 파일에 저장
+    file = fopen(LOG_FILE_PATH, "w");
+    if (file) {
+        char *jsonString = cJSON_Print(jsonLog);
+        fprintf(file, "%s", jsonString);
+        fclose(file);
+        free(jsonString);
+    }
+
+    // 메모리 해제
+    cJSON_Delete(jsonLog);
+}
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -84,11 +182,53 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    else if (strcmp(argv[1], "boot") == 0 ) {
+        if (strcmp(argv[2], "systemlog") == 0 ) {
+            //Power ON Count는 기본적으로 1 증가
+            WriteSystemLogReasonCount(2);
+
+            //Maintenance Mode check
+            //if(maintenance)
+            WriteSystemLogReasonCount(4);
+
+            //Check BootCondition
+            uint32_t bootcondition = ReadBootCondition();
+            if(bootcondition == 0x03){
+                WriteSystemLogReasonCount(7);
+            } else if (bootcondition == 0x04){
+                WriteSystemLogReasonCount(3);
+            } else if (bootcondition == 0x05){
+                WriteSystemLogReasonCount(6);
+            } else {
+                WriteSystemLogReasonCount(8);
+            }
+        } 
+    } 
+
     // Handling 'ethernet' commands
     else if (strcmp(argv[1], "ethernet") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "Usage: %s ethernet <1~9> <set|get> <gpio|conf> [args...]\n", argv[0]);
+            fprintf(stderr, "Usage: %s ethernet <set|get|> <1~9> <gpio|conf> [args...]\n", argv[0]);
             return 1;
+        }
+        if (strcmp(argv[2], "init") == 0) {
+            uint16_t readValue; 
+            uint32_t discreteIn7to0Value = GetDiscreteState7to0();
+            uint32_t discreteIn15to8Value = GetDiscreteState15to8();
+
+            readValue = (discreteIn15to8Value & 0xFF) <<8;
+            readValue |= discreteIn7to0Value & 0xFF;
+
+            int isHigh12 = readValue & (1 << 12);
+            int isHigh13 = readValue & (1 << 13);
+            int isHigh14 = readValue & (1 << 14);
+            int isHigh15 = readValue & (1 << 15);
+
+            if (isHigh12 && (isHigh13 == 0 && isHigh14 == 0 && isHigh15 ==0)) {
+                printf("Ethernet init : Optic Set.\n");
+                // Optic 전환
+                setOpticPort();
+            } 
         }
         if (strcmp(argv[2], "get") == 0) {
             int port = atoi(argv[3]);
@@ -146,6 +286,29 @@ int main(int argc, char *argv[]) {
                 uint8_t value = (uint8_t)strtol(argv[5], NULL, 16);
                 printf("main setGpioConf inpu value : %d\n", value);
                 setGpioConf(port, value);
+            } else if (strcmp(argv[3], "status") == 0) {
+                if(strcmp(argv[4], "green") == 0) {
+                    InitializeAllLEDs();
+                    if (setLedState(0x01, 1) == STATUS_SUCCESS) {
+                        printf("LED 1 set to Green.\n");
+                    } else {
+                        printf("Failed to set LED 1 to Green.\n");
+                    }
+                } else if ( strcmp(argv[4], "red") == 0 ) {
+                    InitializeAllLEDs();
+                    if (setLedState(0x02, 1) == STATUS_SUCCESS) {
+                        printf("LED 1 set to Red.\n");
+                    } else {
+                        printf("Failed to set LED 1 to Red.\n");
+                    }
+                } else if ( strcmp(argv[4], "yellow") == 0 ) {
+                    InitializeAllLEDs();
+                    if (setLedState(0x00, 1) == STATUS_SUCCESS) {
+                        printf("LED 1 set to Yellow.\n");
+                    } else {
+                        printf("Failed to set LED 1 to Yellow.\n");
+                    }
+                }
             }
         } else if (strcmp(argv[2], "get") == 0) {
             if (strcmp(argv[3], "conf") == 0) {
@@ -163,7 +326,7 @@ int main(int argc, char *argv[]) {
 
     // Handling 'nvram' commands
 else if (strcmp(argv[1], "nvram") == 0) {
-    if (argc < 4) {
+    if (argc < 3) {
         fprintf(stderr, "Usage: %s nvram <write|read> <maintenance|bootcondition|system> [args...]\n", argv[0]);
         return 1;
     }
@@ -184,6 +347,20 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[3], "time") == 0) {
             uint32_t time = (uint32_t)strtoul(argv[4], NULL, 0); 
             WriteCumulativeTime(time);
+        } else if (strcmp(argv[3], "test") == 0) {
+            uint32_t addr = (uint32_t)strtoul(argv[4], NULL, 0); 
+            uint32_t value = (uint32_t)strtoul(argv[5], NULL, 0); 
+            WriteBitResult(addr,value);
+        } else if (strcmp(argv[3], "ssd") == 0) {
+            const struct hwCompatInfo myInfo = {
+                .supplier_part_no = "22-00155668",
+                .ssd0_model_no = "TS320GMTE560I", 
+                .ssd0_serial_no = "I487060005",
+                .ssd1_model_no = "EXPI4M7680GB",
+                .ssd1_serial_no = "X08TZB3R042511",
+                .sw_part_number = "HSC-OESG-IRIS"
+            };
+            WriteHwCompatInfoToNVRAM(&myInfo);
         } else {
             fprintf(stderr, "Invalid write type: %s\n", argv[3]);
         }
@@ -262,8 +439,28 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[2], "current") == 0) {
             printf("Current: %.2f\n", getCurrentValue());
         } else if (strcmp(argv[2], "bootcondition") == 0) {
-            printf("BootCondition: %.2f\n", sendBootCondition());
+            sendBootCondition();
+        } else if (strcmp(argv[2], "holdupcc") == 0) {
+            uint8_t returnValue = sendRequestHoldupCC();
+            printf("sendRequestHoldupCC Value = %u\n ", returnValue );
+
+        } else if (strcmp(argv[2], "holduppf") == 0) {
+            uint8_t returnValue = sendRequestHoldupPF();
+            printf("sendRequestHoldupPF Value = %u\n ", returnValue );
+        } 
+
+        if (argc > 3) {
+            if (strcmp(argv[2], "holduppf") == 0) {
+                if (strcmp(argv[3], "start") == 0) {
+                    keepRunning = 1;
+                    startHoldupPFLogging();
+                } else if (strcmp(argv[3], "stop") == 0) {
+                    printf(" Stopping Holdup PFLogging.\n");
+                    keepRunning = 0;
+                }
+            }
         }
+        return 0;
     }
 
     // Handling 'usb' commands
@@ -278,6 +475,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[2], "disable") == 0) {
             DeactivateUSB();
         }
+        return 0;
     }
 
     // Handling 'watchdog' commands
@@ -294,6 +492,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
             int time = atoi(argv[3]);
             SetWatchDogTimeout(time);
         } 
+        return 0;
     }
 
     // Handling 'optic' commands
@@ -311,10 +510,26 @@ else if (strcmp(argv[1], "nvram") == 0) {
         }
         else if (strcmp(argv[2], "copper") == 0) {  
             setDefaultPort();
+        }
+        else if (strcmp(argv[2], "check") == 0) {  
+            uint32_t discreteinValue = GetDiscreteState();
+
+            if( (discreteinValue & 0xF000) == 0x1000 ) {
+                setOpticPort();
+                printf("Ethernet Optic Discrete Check : Setting Optic Ethernet.\n");
+            } else if ( (discreteinValue & 0xF000) == 0x7000 || (discreteinValue & 0xF000) == 0x3000 ) {
+                setDefaultPort();
+                printf("Ethernet Optic Discrete Check : Setting Copper Ethernet.\n");
+            } else {
+            printf("Ethernet Optic Discrete Check : No matching condition met.\n");
+        }
+
         } else {
             fprintf(stderr, "Invalid optic command. Usage: %s optic <test/set/copper>\n", argv[0]);
             return 1;
         }
+
+        
     }
 
         // Handling 'stp' commands
@@ -331,6 +546,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
         if (strcmp(argv[2], "0") == 0) {
             setEthernetStp(0);
         } 
+        return 0;
     }
 
         // Handling 'erase' commands
@@ -345,8 +561,10 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } 
 
         if (strcmp(argv[2], "nvram") == 0) {
-            InitializeNVRAMToFF();
+            InitializeNVRAMToZero();
         } 
+
+        return 0;
     }
 
         // Handling 'boot mode' commands
@@ -362,7 +580,10 @@ else if (strcmp(argv[1], "nvram") == 0) {
             if ((discreteInValue & 0x0020) == 0x0020 && (discreteInValue & 0x0040) == 0) {
                 char command[256];
                 snprintf(command, sizeof(command), "ethernet-test broadcast start &");
-                system(command);
+                int ret = system(command);
+                if (ret == -1) {
+                    perror("system command failed");
+                }
 
                 WriteBootModeStatus(BOOT_SIL_MODE);
 

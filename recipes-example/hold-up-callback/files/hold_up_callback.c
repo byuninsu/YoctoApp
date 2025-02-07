@@ -41,25 +41,25 @@ int main() {
 
     printf("Waiting for GPIO events on GPIO %d...\n", GPIO_PIN);
 
-    while (1) {
-        // 이벤트 대기
-        ret = gpiod_line_event_wait(line, NULL);
-        if (ret < 0) {
-            perror("Error waiting for GPIO event");
-            break;
-        }
+    // while (1) {
+    //     // 이벤트 대기
+    //     ret = gpiod_line_event_wait(line, NULL);
+    //     if (ret < 0) {
+    //         perror("Error waiting for GPIO event");
+    //         break;
+    //     }
 
-        // 이벤트 읽기
-        ret = gpiod_line_event_read(line, &event);
-        if (ret < 0) {
-            perror("Error reading GPIO event");
-            break;
-        }
+    //     // 이벤트 읽기
+    //     ret = gpiod_line_event_read(line, &event);
+    //     if (ret < 0) {
+    //         perror("Error reading GPIO event");
+    //         break;
+    //     }
 
-        if (event.event_type == GPIOD_LINE_EVENT_FALLING_EDGE) {
-            printf("GPIO %d went LOW!\n", GPIO_PIN);
-        }
-    }
+    //     if (event.event_type == GPIOD_LINE_EVENT_FALLING_EDGE) {
+    //         printf("GPIO %d went LOW!\n", GPIO_PIN);
+    //     }
+    // }
 
     // 자원 정리
     gpiod_chip_close(chip);

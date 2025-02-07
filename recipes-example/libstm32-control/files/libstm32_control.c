@@ -14,7 +14,7 @@ static uint8_t bits = 8;
 static uint8_t mode = 0;
 static int fd;
 
-int spiInit() {
+int spiInit(void) {
 
     int ret = 0;
 
@@ -245,6 +245,59 @@ uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
 
 }
 
+uint8_t sendCommandForResponseOneByte(stm32_spi_reg command) {
+
+    spiInit();
+
+    uint8_t tx_buf[2] = { command, 0x00 };
+	uint8_t tx_buf2[2] = { 0xFF, 0xFF };
+    uint8_t spi_rx_buf[1] = { 0 }; 
+    float data;
+
+    struct spi_ioc_transfer xfer[2] = {
+        {
+            .tx_buf = (uintptr_t)tx_buf,
+            .rx_buf = 0,
+            .len = sizeof(tx_buf),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        },
+        {
+            .tx_buf = (uintptr_t)tx_buf2,
+            .rx_buf = (uintptr_t)spi_rx_buf,
+            .len = sizeof(tx_buf2),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        }
+    };
+
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
+        perror("Failed to send command");
+        return -1;
+    }
+
+	usleep(10000);
+
+	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+        perror("Failed to receive data");
+        return -1;
+    }
+
+    //rx_buf 내용 출력
+    for (int i = 0; i < sizeof(spi_rx_buf); i++) {
+        printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
+    }
+
+    if (fd != -1) {
+        close(fd);   
+        fd = -1;     
+    }
+
+    return spi_rx_buf[0];
+}
+
 
 float  getTempSensorValue(void){
     return sendCommand(STM32_SPI_REG_TEMP);
@@ -274,9 +327,10 @@ uint8_t  sendCommandTimeout(uint8_t timeout){
     return sendSetTimeout(STM32_SPI_SEND_SETTIMEOUT, timeout);
 }
 
+uint8_t sendRequestHoldupPF(void){
+    return sendCommandForResponseOneByte(STM32_SPI_REQUEST_HOLDUP_PF);
+}
 
-
-
-
-
-
+uint8_t sendRequestHoldupCC(void){
+    return sendCommandForResponseOneByte(STM32_SPI_REQUEST_HOLDUP_CC);
+}
