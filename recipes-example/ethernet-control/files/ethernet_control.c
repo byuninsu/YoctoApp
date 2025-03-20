@@ -16,6 +16,7 @@
 #include "mii.h"  
 
 #define MAX_ETH 8 /* Maximum # of interfaces */
+#define MAX_PORT 10  // 포트 개수
 
 static char iface[20] = {0};
 static int skfd = -1; /* AF_INET socket for ioctl() calls. */
@@ -279,6 +280,33 @@ void setEthernetStp(int value) {
         system("brctl delbr br0"); // 브리지 삭제
         printf("STP 비활성화 및 브리지 삭제 완료.\n");
     }
+}
+
+#define MAX_PORT 10  // 포트 개수
+
+uint8_t setVlanStp(void) {
+
+    char command[256];
+
+    // MAC 주소가 48:로 시작하는 인터페이스가 있는지 확인
+    if (iface[0] == '\0') {
+        if (checkEthernetInterface() == NULL) {
+            printf("not found ethernet interface contain 48: \n");
+            return 1;
+        }
+    }
+
+    // 포트 1 ~ 10(A)까지 VLAN 설정
+    for (int port = 2; port <= MAX_PORT; port++) {
+        snprintf(command, sizeof(command),
+                 "%s %s 0x%02x 0x06 0x0002",
+                 "mdio-tool w", iface, port);
+
+        printf("Executing: %s\n", command);
+        system(command);
+    }
+
+    return 0;
 }
 
 

@@ -35,6 +35,7 @@ typedef struct {
 
 
 // 함수 선언
+int read_nvme_info(const char* nvme_dev, char* model_no, size_t model_size, char* serial_no, size_t serial_size);
 size_t GetItemCount();
 const char* GetItemName(uint32_t mItem);
 int check_ssd(const char *ssd_path);
@@ -53,10 +54,19 @@ int checkTempSensor();
 int checkPowerMonitor();
 int checkUsb(void);
 int checkOptic();
-void  RequestBit(uint32_t mtype);
+uint8_t CheckHwCompatInfo(void);
+int checkHoldupModule(void);
+int checkStm32Status(void);
+int checkPowerStatus(void);
+int checkLan7800(void);
+int checkUSBc(void);
+int checkUSBa(void);
+void RequestBit(uint32_t mtype);
+void RequestCBIT(uint32_t mtype);
 uint32_t readtBitResult(uint32_t type);
 SSD_Status getSSDSmartLog(uint8_t ssd_type);
 uint8_t initializeDataSSD(void);
+
 
 
 

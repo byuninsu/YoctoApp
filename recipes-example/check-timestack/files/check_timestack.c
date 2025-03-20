@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include "nvram_control.h"
 
 #define JSON_FILE_PATH "/mnt/dataSSD/ssdLog_test.json"
 #define SSD_DEVICE "/dev/nvme0n1"
@@ -130,6 +131,8 @@ int main() {
         } else {
             log_data(formatted_time, ssd_capacity);
         }
+
+        WriteCumulativeTime(LOG_INTERVAL/60);
 
         sleep(LOG_INTERVAL); // Wait for LOG_INTERVAL second
     }

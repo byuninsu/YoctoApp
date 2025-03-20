@@ -19,6 +19,7 @@ extern "C" {
 char * checkEthernetInterface();
 uint8_t  setEthernetPort(int port, int state);
 uint32_t  getEthernetPort(int port);
+uint8_t setVlanStp(void);
 
 #ifdef __cplusplus
 }

@@ -17,10 +17,8 @@
 
 #define BOOT_SIL_MODE 0x01
 #define BOOT_NOMAL_MODE 0x00  
-
-#define HOLDUP_LOG_FILE_DIR "/mnt/dataSSD/"
-#define HOLDUP_LOG_FILE_NAME "HoldupLog.json"
-#define LOG_FILE_PATH HOLDUP_LOG_FILE_DIR HOLDUP_LOG_FILE_NAME
+#define PHY_SETTING_FILE "/mnt/dataSSD/phy_setting"
+#define LOG_FILE_PATH "/mnt/dataSSD/ProgramPinErrorLog"
 
 int keepRunning = 1; // 프로그램 실행 플래그
 
@@ -33,87 +31,28 @@ void InitializeAllLEDs() {
     printf("All GPIOs initialized to 0.\n");
 }
 
-void startHoldupPFLogging() {
-    printf(" Holdup CC Logging Started...\n");
-    while (keepRunning) {
-        uint8_t ccValue = sendRequestHoldupPF();  // SPI로 값 읽기
-        printf("CC Value: %u\n", ccValue);
-        writeLogToFile(ccValue);  // JSON 로그 저장
-        usleep(10000);
-    }
-    printf("Logging Stopped.\n");
-}
-
-// JSON 로그 파일에 데이터 추가 함수
-void writeLogToFile(uint8_t ccValue) {
-    FILE *file = fopen(LOG_FILE_PATH, "r");
-    cJSON *jsonLog = NULL;
-
-    // 기존 JSON 로그 파일 읽기 (없으면 새로 생성)
-    if (file) {
-        fseek(file, 0, SEEK_END);
-        long fileSize = ftell(file);
-        rewind(file);
-
-        if (fileSize > 0) {
-
-            char *jsonStr = (char *)malloc(fileSize + 1);
-            if (jsonStr == NULL) {
-                fclose(file);
-                printf("ERROR: Memory allocation failed for jsonStr\n");
-                return;
-            }
-            fread(jsonStr, 1, fileSize, file);
-            jsonStr[fileSize] = '\0';
-
-
-            fclose(file);
-
-            jsonLog = cJSON_Parse(jsonStr);
-            free(jsonStr);
-        } else {
-            fclose(file);
-        }
-    }
-
-    // 기존 JSON 파일이 없거나 비어 있으면 새로운 JSON 배열 생성
-    if (!jsonLog) {
-        jsonLog = cJSON_CreateArray();
-    }
-
-    // 현재 시간 추가
+void logProgramPinError() {
+    FILE *logFile;
     time_t now = time(NULL);
     struct tm *t = localtime(&now);
+    char timestamp[20];
+    
+    // 시간 형식 YYMMDDHHMMSS
+    strftime(timestamp, sizeof(timestamp), "%y%m%d%H%M%S", t);
 
-    if (t == NULL) {  
-        printf("ERROR: localtime() failed!\n");
-        return;
+    // 로그 저장
+    logFile = fopen(LOG_FILE_PATH, "a");
+    if (logFile) {
+        fprintf(logFile, "%sPROGRAM_PIN_COMPAT_FAULT\n", timestamp);
+        fclose(logFile);
+    } else {
+        perror("Failed to open log file");
     }
 
-    char timeStr[64];
-    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", t);
-
-
-    // 새 JSON 객체 생성 {"timestamp": "2025-02-07 12:00:00", "cc_value": 1}
-    cJSON *logEntry = cJSON_CreateObject();
-    cJSON_AddStringToObject(logEntry, "timestamp", timeStr);
-    cJSON_AddNumberToObject(logEntry, "cc_value", ccValue);
-
-    // JSON 배열에 추가
-    cJSON_AddItemToArray(jsonLog, logEntry);
-
-    // 파일에 저장
-    file = fopen(LOG_FILE_PATH, "w");
-    if (file) {
-        char *jsonString = cJSON_Print(jsonLog);
-        fprintf(file, "%s", jsonString);
-        fclose(file);
-        free(jsonString);
-    }
-
-    // 메모리 해제
-    cJSON_Delete(jsonLog);
+    fflush(logFile);  // 캐시 플러시
+    fsync(fileno(logFile)); // 디스크 동기화
 }
+
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -228,8 +167,19 @@ int main(int argc, char *argv[]) {
                 printf("Ethernet init : Optic Set.\n");
                 // Optic 전환
                 setOpticPort();
-            } 
+            }  else if ((isHigh12 == 0 && isHigh13 && isHigh14 && isHigh15) ||  // 0111
+                (isHigh12 == 0 && isHigh13 && isHigh14 && isHigh15 == 0)) { // 0011
+                printf("Ethernet init : Copper Set.\n");
+                
+            } else {
+                printf("Ethernet init : Program Pin Compatibility Fault. Logging error...\n");
+                logProgramPinError();
+                
+                printf("Shutting down system...\n");
+                system("poweroff");
+            }
         }
+
         if (strcmp(argv[2], "get") == 0) {
             int port = atoi(argv[3]);
             getEthernetPort(port);
@@ -308,6 +258,40 @@ int main(int argc, char *argv[]) {
                     } else {
                         printf("Failed to set LED 1 to Yellow.\n");
                     }
+                } else if (strcmp(argv[4], "sequence") == 0) {
+                    printf("Starting LED sequence: Yellow , Green , Red\n");
+
+                    // 1~4번 LED Yellow
+                    InitializeAllLEDs();
+                    printf("LED 1~4 set to Yellow.\n");
+                    setLedState(0x00, 1);
+                    setLedState(0x03, 1);
+                    setLedState(0x06, 1);
+                    setLedState(0x09, 1);
+                    usleep(5000000);
+
+                    // 1~4번 LED Green
+                    InitializeAllLEDs();
+                    printf("LED 1~4 set to Green.\n");
+                    setLedState(0x01, 1);
+                    setLedState(0x04, 1);
+                    setLedState(0x07, 1);
+                    setLedState(0x0A, 1);
+                    usleep(5000000);
+
+                    // 1~4번 LED Red
+                    InitializeAllLEDs();
+                    printf("LED 1~4 set to Red.\n");
+                    setLedState(0x02, 1);
+                    setLedState(0x05, 1);
+                    setLedState(0x08, 1);
+                    setLedState(0x0B, 1);
+                    usleep(5000000);
+
+                    // 최종적으로 모든 LED 초기화 (꺼짐 상태)
+                    InitializeAllLEDs();
+                    
+                    printf("LED sequence completed.\n");
                 }
             }
         } else if (strcmp(argv[2], "get") == 0) {
@@ -353,11 +337,12 @@ else if (strcmp(argv[1], "nvram") == 0) {
             WriteBitResult(addr,value);
         } else if (strcmp(argv[3], "ssd") == 0) {
             const struct hwCompatInfo myInfo = {
-                .supplier_part_no = "22-00155668",
+                .supplier_part_no = "OESG-51G09000",
+                .supplier_serial_no = "UB-AAIS001",
                 .ssd0_model_no = "TS320GMTE560I", 
-                .ssd0_serial_no = "I487060005",
+                .ssd0_serial_no = "I483820001",
                 .ssd1_model_no = "EXPI4M7680GB",
-                .ssd1_serial_no = "X08TZB3R042511",
+                .ssd1_serial_no = "X08TZB3R130446",
                 .sw_part_number = "HSC-OESG-IRIS"
             };
             WriteHwCompatInfoToNVRAM(&myInfo);
@@ -386,6 +371,25 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[3], "time") == 0) {
             uint32_t result = ReadCumulativeTime();
             printf("Reading CumulativeTime Value: %u\n", result); 
+        } else if (strcmp(argv[3], "ssd") == 0) {
+            struct hwCompatInfo info;
+            memset(&info, 0, sizeof(info));
+
+            if (ReadHwCompatInfoFromNVRAM(&info) == 0) {
+                printf("SSD Compatibility Info:\n");
+                printf(" Supplier Part No  : %s\n", info.supplier_part_no);
+                printf(" Supplier Serial No: %s\n", info.supplier_serial_no);
+                printf(" SSD0 Model No     : %s\n", info.ssd0_model_no);
+                printf(" SSD0 Serial No    : %s\n", info.ssd0_serial_no);
+                printf(" SSD1 Model No     : %s\n", info.ssd1_model_no);
+                printf(" SSD1 Serial No    : %s\n", info.ssd1_serial_no);
+                printf(" SW Part Number    : %s\n", info.sw_part_number);
+            } else {
+                fprintf(stderr, "Error reading SSD compatibility info from NVRAM.\n");
+            }
+        } else if (strcmp(argv[3], "check") == 0) {
+            uint8_t result = CheckHwCompatInfo();
+            printf("Reading CheckHwCompatInfo Value: %d\n", result); 
         } else {
             fprintf(stderr, "Invalid read type: %s\n", argv[3]);
         }
@@ -425,6 +429,20 @@ else if (strcmp(argv[1], "nvram") == 0) {
         }
     }
 
+    // Handling 'holdup interrupt' start commands
+    else if (strcmp(argv[1], "holdup") == 0) {
+        if (strcmp(argv[2], "start") == 0) {
+            printf("Starting holdup process: hold_up_callback\n");
+            system("hold_up_callback &");  // 백그라운드 실행
+        } else if (strcmp(argv[2], "stop") == 0) {
+            printf("Stopping holdup process...\n");
+            system("pkill -f hold_up_callback");  // 실행 중인 프로세스 종료
+        } else {
+            printf("Invalid command: %s\n", argv[2]);
+            return 1;
+        }
+    }
+
     // Handling 'stm32' commands
     else if (strcmp(argv[1], "stm32") == 0) {
         if (argc < 3) {
@@ -448,18 +466,6 @@ else if (strcmp(argv[1], "nvram") == 0) {
             uint8_t returnValue = sendRequestHoldupPF();
             printf("sendRequestHoldupPF Value = %u\n ", returnValue );
         } 
-
-        if (argc > 3) {
-            if (strcmp(argv[2], "holduppf") == 0) {
-                if (strcmp(argv[3], "start") == 0) {
-                    keepRunning = 1;
-                    startHoldupPFLogging();
-                } else if (strcmp(argv[3], "stop") == 0) {
-                    printf(" Stopping Holdup PFLogging.\n");
-                    keepRunning = 0;
-                }
-            }
-        }
         return 0;
     }
 
@@ -485,13 +491,16 @@ else if (strcmp(argv[1], "nvram") == 0) {
             return 1;
         }
         if (strcmp(argv[2], "start") == 0) {
-            StartWatchDog();
+            sendStartWatchdog();
         } else if (strcmp(argv[2], "stop") == 0) {
-            StopWatchDog();
+            sendStopWatchdog();
         } else if (strcmp(argv[2], "settime") == 0) {
             int time = atoi(argv[3]);
-            SetWatchDogTimeout(time);
-        } 
+            sendCommandTimeout(time);
+        } else if (strcmp(argv[2], "remain") == 0) {
+            uint8_t result = sendWatchdogRemainTime();
+            fprintf(stderr, "Watchdog remain Time: %s \n", result);
+        }
         return 0;
     }
 
@@ -522,8 +531,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
                 printf("Ethernet Optic Discrete Check : Setting Copper Ethernet.\n");
             } else {
             printf("Ethernet Optic Discrete Check : No matching condition met.\n");
-        }
-
+            }
         } else {
             fprintf(stderr, "Invalid optic command. Usage: %s optic <test/set/copper>\n", argv[0]);
             return 1;
@@ -546,6 +554,11 @@ else if (strcmp(argv[1], "nvram") == 0) {
         if (strcmp(argv[2], "0") == 0) {
             setEthernetStp(0);
         } 
+
+        if (strcmp(argv[2], "on") == 0) {
+            setVlanStp();
+        } 
+
         return 0;
     }
 
@@ -592,8 +605,52 @@ else if (strcmp(argv[1], "nvram") == 0) {
             } else {
                 printf("Detect Discrete-In 'Input_05 Value: False', BootMode: Normal\n");
             }
-        } 
+        } else if ( strcmp(argv[2], "phy") == 0) {
 
+            char* iface = checkEthernetInterface();
+
+            if ( strcmp(argv[3], "start") == 0) {
+                // 파일 값 읽기
+                FILE *file = fopen(PHY_SETTING_FILE, "r");
+                int setting = 0; // 기본값 0
+                if (file != NULL) {
+                    fscanf(file, "%d", &setting);
+                    fclose(file);
+                }
+
+                if (setting == 1) {
+                    printf("PHY setting is ON, bringing interface down.\n");
+                    char command[256];
+                    snprintf(command, sizeof(command), "ip link set %s down", iface);
+                    system(command);
+                } else {
+                    printf("PHY setting is OFF, doing nothing.\n");
+                }
+
+            } else if ( strcmp(argv[3], "on") == 0 ) {
+                // 파일에 "1" 저장
+                FILE *file = fopen(PHY_SETTING_FILE, "w");
+                if (file == NULL) {
+                    perror("Failed to open setting file");
+                    return 1;
+                }
+                fprintf(file, "1");
+                fclose(file);
+                printf("PHY setting enabled.\n");
+
+            } else if ( strcmp(argv[3], "off") == 0 ) {
+                // 파일에 "0" 저장
+                FILE *file = fopen(PHY_SETTING_FILE, "w");
+                if (file == NULL) {
+                    perror("Failed to open setting file");
+                    return 1;
+                }
+                fprintf(file, "0");
+                fclose(file);
+                printf("PHY setting disabled.\n");
+
+            }
+        } 
     }
 
     // BIT Check commands
@@ -665,7 +722,13 @@ else if (strcmp(argv[1], "nvram") == 0) {
 
         } else if (strcmp(option, "all") == 0){
             uint32_t type = (uint32_t)strtoul(argv[3], NULL, 0); 
-            RequestBit(type);
+
+            if( type == 2){
+                RequestBit(type);
+            } else if (type == 3) {
+                RequestCBIT(type);
+            }
+            
         } else {
             printf("Invalid option. Use 'gpio', 'ssd', or 'discrete'.\n");
             return 1;

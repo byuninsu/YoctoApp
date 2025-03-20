@@ -327,6 +327,10 @@ uint8_t  sendCommandTimeout(uint8_t timeout){
     return sendSetTimeout(STM32_SPI_SEND_SETTIMEOUT, timeout);
 }
 
+uint8_t sendWatchdogRemainTime(void){
+    return sendCommandForResponseOneByte(STM32_SPI_WATCHDOG_REMAIN_TIME);
+}
+
 uint8_t sendRequestHoldupPF(void){
     return sendCommandForResponseOneByte(STM32_SPI_REQUEST_HOLDUP_PF);
 }
@@ -334,3 +338,12 @@ uint8_t sendRequestHoldupPF(void){
 uint8_t sendRequestHoldupCC(void){
     return sendCommandForResponseOneByte(STM32_SPI_REQUEST_HOLDUP_CC);
 }
+
+uint8_t sendPowerStatus(void){
+    return sendCommandForResponseOneByte(STM32_SPI_REQUEST_POWER_STATUS);
+}
+
+uint8_t sendStm32Status(void){
+    return sendCommandForResponseOneByte(STM32_SPI_REQUEST_STM32_STATUS);
+}
+

@@ -5,13 +5,19 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 PN = "hold-up-callback"
 
-DEPENDS = "libgpiod"
+DEPENDS += "stm32-control"
+DEPENDS += "nvram-control"
+DEPENDS += "libgpiod"
 
 SRC_URI = "file://hold_up_callback \
            file://hold_up_callback.c"
 
 do_compile() {
-    ${CC} ${CFLAGS} ${LDFLAGS} -o hold_up_callback ${WORKDIR}/hold_up_callback.c -lgpiod
+    ${CC} ${CFLAGS} ${LDFLAGS} \
+    -I${STAGING_INCDIR} \
+    -I${STAGING_INCDIR}/stm32-control \  
+    -I${STAGING_INCDIR}/nvram-control \  
+    -o hold_up_callback ${WORKDIR}/hold_up_callback.c -lgpiod -lstm32-control -lnvram-control
 }
 
 do_install() {

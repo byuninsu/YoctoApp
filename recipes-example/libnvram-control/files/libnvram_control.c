@@ -13,53 +13,6 @@ static uint32_t speed = 4500000;
 static uint8_t bits = 8;
 static uint8_t mode = 0;
 static int fd; // device
-
-//nvram command
-typedef enum {
-
-    NVRAM_SPI_CMD_WRITE = 0x02,
-
-    NVRAM_SPI_CMD_READ = 0x03,
-
-    NVRAM_SPI_CMD_WREN = 0x06,
-
-	NVRAM_SPI_CMD_WRDI = 0x04,
-
-	NVRAM_SPI_CMD_GETID= 0x9F,
-
-} nvram_spi_commands_t;
-
-
-// NVRAM 메모리 맵
-typedef enum {
-    //1 byte addr
-    NVRAM_POWER_ON_COUNT_ADDR = 0x00,
-    NVRAM_MAINTENANCE_MODE_COUNT_ADDR = 0x04,
-    NVRAM_NORMAL_MODE_COUNT_ADDR = 0x08,
-    NVRAM_CONTAINER_START_COUNT_ADDR = 0x0C,
-    NVRAM_RESET_BY_WATCHDOG_COUNT_ADDR = 0x10,
-    NVRAM_RESET_BY_BUTTON_COUNT_ADDR = 0x14,
-    NVRAM_ACTIVATED_TEST = 0x18,
-    NVRAM_MAINTENANCE_MODE = 0x1C,
-    NVRAM_BOOTING_CONDITION = 0x20,
-    NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR = 0x3C,
-    NVRAM_CUMULATIVE_TIME_ADDR = 0x40,
-    NVRAM_BOOT_MODE = 0x44,
-
-    //SSD PART NO ADDR (15BYTE)
-    NVRAM_SUPPLIER_PART_NO = 0x48,
-    NVRAM_SSD0_MODEL_NO = 0x57,
-    NVRAM_SSD0_SERIAL_NO = 0x66,
-    NVRAM_SSD1_MODEL_NO = 0x75,
-    NVRAM_SSD1_SERIAL_NO = 0x84,
-    NVRAM_SW_PART_NO = 0x88,
-
-    //4 byte addr
-    NVRAM_BIT_RESULT_POWERON = 0x24,
-    NVRAM_BIT_RESULT_CONTINUOUS = 0x2C,
-    NVRAM_BIT_RESULT_INITIATED = 0x34
-} NvramAddress;
-
     
 uint32_t nvramInit(void) {
     int ret = 0;
@@ -161,7 +114,7 @@ uint32_t ReadNVRAMValue(uint32_t address) {
         return 1;
     }
 
-    printf("read rx_buf[0] = 0x%02X\n", rx_buf[0]);
+    //printf("read rx_buf[0] = 0x%02X\n", rx_buf[0]);
 
     // 수신된 데이터 처리 (1바이트 읽음)
     nvram_output = rx_buf[0];
@@ -637,92 +590,64 @@ uint32_t  WriteSystemLogReasonCount(uint32_t resetReason) {
         }
 }
 
-// NVRAM에 구조체 저장 함수
+
+// NVRAM에 구조체 저장 함수 (널문자 고려)
 uint32_t WriteHwCompatInfoToNVRAM(const struct hwCompatInfo *info) {
     uint32_t result = 0;
 
-    // `supplier_part_no` 저장 (11 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->supplier_part_no); i++) {
-        result |= WriteNVRAMValue(NVRAM_SUPPLIER_PART_NO + i, info->supplier_part_no[i]);
-    }
+    // 매크로로 반복되는 코드 처리
+    #define WRITE_STRING_TO_NVRAM(base, field) \
+        do { \
+            size_t len = sizeof(info->field) - 1; \
+            size_t i; \
+            for (i = 0; i < len && info->field[i] != '\0'; i++) { \
+                result |= WriteNVRAMValue((base) + i, info->field[i]); \
+            } \
+            result |= WriteNVRAMValue((base) + i, '\0'); \
+        } while(0)
 
-    // `ssd0_model_no` 저장 (13 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd0_model_no); i++) {
-        result |= WriteNVRAMValue(NVRAM_SSD0_MODEL_NO + i, info->ssd0_model_no[i]);
-    }
+    WRITE_STRING_TO_NVRAM(NVRAM_SUPPLIER_PART_NO, supplier_part_no);
+    WRITE_STRING_TO_NVRAM(NVRAM_SSD0_MODEL_NO, ssd0_model_no);
+    WRITE_STRING_TO_NVRAM(NVRAM_SSD0_SERIAL_NO, ssd0_serial_no);
+    WRITE_STRING_TO_NVRAM(NVRAM_SSD1_MODEL_NO, ssd1_model_no);
+    WRITE_STRING_TO_NVRAM(NVRAM_SSD1_SERIAL_NO, ssd1_serial_no);
+    WRITE_STRING_TO_NVRAM(NVRAM_SW_PART_NO, sw_part_number);
+    WRITE_STRING_TO_NVRAM(NVRAM_SW_SERIAL_NO, supplier_serial_no);
 
-    // `ssd0_serial_no` 저장 (10 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd0_serial_no); i++) {
-        result |= WriteNVRAMValue(NVRAM_SSD0_SERIAL_NO + i, info->ssd0_serial_no[i]);
-    }
-
-    // `ssd1_model_no` 저장 (12 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd1_model_no); i++) {
-        result |= WriteNVRAMValue(NVRAM_SSD1_MODEL_NO + i, info->ssd1_model_no[i]);
-    }
-
-    // `ssd1_serial_no` 저장 (14 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd1_serial_no); i++) {
-        result |= WriteNVRAMValue(NVRAM_SSD1_SERIAL_NO + i, info->ssd1_serial_no[i]);
-    }
-
-    // `sw_part_number` 저장 (11 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->sw_part_number); i++) {
-        result |= WriteNVRAMValue(NVRAM_SW_PART_NO + i, info->sw_part_number[i]);
-    }
+    #undef WRITE_STRING_TO_NVRAM
 
     return result;
 }
 
-// NVRAM에서 구조체 데이터를 읽어오는 함수
+
+// NVRAM에서 구조체 데이터를 읽어오는 함수 (널문자 명확히 처리)
 uint32_t ReadHwCompatInfoFromNVRAM(struct hwCompatInfo *info) {
     uint32_t result = 0;
 
-    // `supplier_part_no` 읽기 (11 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->supplier_part_no); i++) {
-        uint8_t value = ReadNVRAMValue(NVRAM_SUPPLIER_PART_NO + i);
-        info->supplier_part_no[i] = value;
-        if (value == '\0') break; // Null terminator 찾으면 종료
-    }
+    #define READ_STRING_FROM_NVRAM(base, field) \
+        do { \
+            size_t len = sizeof(info->field) - 1; \
+            size_t i; \
+            for (i = 0; i < len; i++) { \
+                uint8_t value = ReadNVRAMValue((base) + i); \
+                info->field[i] = value; \
+                if (value == '\0') break; \
+            } \
+            info->field[len] = '\0'; \
+        } while(0)
 
-    // `ssd0_model_no` 읽기 (13 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd0_model_no); i++) {
-        uint8_t value = ReadNVRAMValue(NVRAM_SSD0_MODEL_NO + i);
-        info->ssd0_model_no[i] = value;
-        if (value == '\0') break; // Null terminator 찾으면 종료
-    }
+    READ_STRING_FROM_NVRAM(NVRAM_SUPPLIER_PART_NO, supplier_part_no);
+    READ_STRING_FROM_NVRAM(NVRAM_SSD0_MODEL_NO, ssd0_model_no);
+    READ_STRING_FROM_NVRAM(NVRAM_SSD0_SERIAL_NO, ssd0_serial_no);
+    READ_STRING_FROM_NVRAM(NVRAM_SSD1_MODEL_NO, ssd1_model_no);
+    READ_STRING_FROM_NVRAM(NVRAM_SSD1_SERIAL_NO, ssd1_serial_no);
+    READ_STRING_FROM_NVRAM(NVRAM_SW_PART_NO, sw_part_number);
+    READ_STRING_FROM_NVRAM(NVRAM_SW_SERIAL_NO, supplier_serial_no);
 
-    // `ssd0_serial_no` 읽기 (10 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd0_serial_no); i++) {
-        uint8_t value = ReadNVRAMValue(NVRAM_SSD0_SERIAL_NO + i);
-        info->ssd0_serial_no[i] = value;
-        if (value == '\0') break; // Null terminator 찾으면 종료
-    }
-
-    // `ssd1_model_no` 읽기 (12 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd1_model_no); i++) {
-        uint8_t value = ReadNVRAMValue(NVRAM_SSD1_MODEL_NO + i);
-        info->ssd1_model_no[i] = value;
-        if (value == '\0') break; // Null terminator 찾으면 종료
-    }
-
-    // `ssd1_serial_no` 읽기 (14 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->ssd1_serial_no); i++) {
-        uint8_t value = ReadNVRAMValue(NVRAM_SSD1_SERIAL_NO + i);
-        info->ssd1_serial_no[i] = value;
-        if (value == '\0') break; // Null terminator 찾으면 종료
-    }
-
-    // `sw_part_number` 읽기 (11 bytes + null terminator)
-    for (size_t i = 0; i < sizeof(info->sw_part_number); i++) {
-        uint8_t value = ReadNVRAMValue(NVRAM_SW_PART_NO + i);
-        info->ssd1_serial_no[i] = value;
-        if (value == '\0') break; // Null terminator 찾으면 종료
-    }
+    #undef READ_STRING_FROM_NVRAM
 
     return result;
 }
-
 
 
 

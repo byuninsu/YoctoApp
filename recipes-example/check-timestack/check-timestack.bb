@@ -5,19 +5,21 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 PN = "check-timestack"
 
-DEPENDS = ""
+DEPENDS += "nvram-control"
 
 SRC_URI = "file://check_timestack.c \
            file://check_timestack"
 
 # Compilation
-
 do_compile() {
-    ${CC} ${CFLAGS} ${LDFLAGS} -o check_timestack ${WORKDIR}/check_timestack.c
+    ${CC} ${CFLAGS} ${LDFLAGS} \
+    -I${STAGING_INCDIR}/nvram-control \
+    ${WORKDIR}/check_timestack.c \
+    -o ${B}/check_timestack \
+    -lnvram-control
 }
 
 # Installation
-
 do_install() {
     install -d ${D}${sysconfdir}/init.d/
     install -m 0755 ${WORKDIR}/check_timestack ${D}${sysconfdir}/init.d/check_timestack
@@ -30,3 +32,4 @@ INITSCRIPT_NAME = "check_timestack"
 INITSCRIPT_PARAMS = "defaults"
 
 inherit update-rc.d
+

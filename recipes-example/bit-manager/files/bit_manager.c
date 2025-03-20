@@ -29,11 +29,48 @@
 #define NVME_DEVICE_DATA "/dev/nvme0n1"
 #define NVME_DEVICE_OS "/dev/nvme1n1"
 #define NVME_MOUNT_POINT_DATA "/mnt/dataSSD"
+#define USB1_PATH "/sys/bus/usb/devices/usb1/authorized"
+#define USB2_PATH "/sys/bus/usb/devices/usb2/authorized"
 
 char iface[20] = {0};
 uint32_t powerOnBitResult = 0; 
 uint32_t ContinuousBitResult = 0; 
 uint32_t initiatedBitResult = 0; 
+
+// 고정된 하드웨어 정보
+const struct hwCompatInfo myInfo = {
+    .supplier_part_no   = "22-00155668",
+    .supplier_serial_no = "UB-AAIS001",
+    .sw_part_number     = "HSC-OESG-IRIS"
+};
+
+// nvme 장치로부터 정보 읽기 함수
+int read_nvme_info(const char* nvme_dev, char* model_no, size_t model_size, char* serial_no, size_t serial_size) {
+    char cmd[128], line[512];
+
+    snprintf(cmd, sizeof(cmd), "nvme list | grep '%s'", nvme_dev);
+
+    FILE* fp = popen(cmd, "r");
+    if (!fp) return -1;
+
+    if (!fgets(line, sizeof(line), fp)) {
+        pclose(fp);
+        return -1;
+    }
+    pclose(fp);
+
+    // nvme 출력에서 Node, SN, Model 만 파싱 (다른 항목 무시)
+    char node[32], sn[64], model[128];
+    if (sscanf(line, "%31s %63s %127s", node, sn, model) != 3)
+        return -1;
+
+    strncpy(model_no, model, model_size);
+    model_no[model_size - 1] = '\0';
+    strncpy(serial_no, sn, serial_size);
+    serial_no[serial_size - 1] = '\0';
+
+    return 0;
+}
 
 const char* itemNames[] = {
     "GPU module",
@@ -48,12 +85,37 @@ const char* itemNames[] = {
     "1G Ethernet Switch",
     "Optic Transceiver",
     "Temperature Sensor",
-    "Power Monitor"
+    "Power Monitor",
+    "Holdup Module",
+    "STM32 Status",
+    "Lan 7800 Status",
+    "AC/DC Status",
+    "DC/DC Status",
+    "USB A Status",
+    "USB C Status"
+};
+
+const char* cBitItemNames[] = {
+    "GPIO Expander",
+    "Ethernet PHY",
+    "NVRAM",
+    "Discrete Input",
+    "Discrete Output",
+    "RS232 Transceiver",
+    "Ethernet Switch",
+    "Temperature Sensor",
+    "Power Monitor",
+    "Holdup Module",
+    "STM32 Status"
 };
 
 
 size_t GetItemCount() {
     return sizeof(itemNames) / sizeof(itemNames[0]);
+}
+
+size_t GetItemCountofCBIT() {
+    return sizeof(cBitItemNames) / sizeof(cBitItemNames[0]);
 }
 
 const char* GetItemName(uint32_t mItem) {
@@ -100,6 +162,7 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     struct tm *timeinfo;
     char timestamp[20];
     char logFilePath[128];
+    size_t itemCount;
 
     // Get the current time
     time(&now);
@@ -126,7 +189,14 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     fprintf(logFile, "\"Sequence\":%u,", sequence);
 
     // Iterate through each bit of bitStatus using the dynamic item count
-    size_t itemCount = GetItemCount();
+
+
+    if(mtype == 3){
+        itemCount = GetItemCountofCBIT();
+    } else {
+        itemCount = GetItemCount();
+    }
+    
     for (uint32_t i = 0; i < itemCount; i++) {
         uint32_t bitValue = (bitStatus >> i) & 1;  // Extract the bit value (0 or 1)
         fprintf(logFile, "\"%s\":%u", GetItemName(i), bitValue);
@@ -243,8 +313,10 @@ SSD_Status getSSDSmartLog(uint8_t ssd_type) {
 
     // NVMe 디바이스 선택
     if (ssd_type == 2) {
+        //os
         fp = popen("nvme smart-log /dev/nvme1", "r");
     } else if (ssd_type == 3) {
+        //data
         fp = popen("nvme smart-log /dev/nvme0", "r");
     }
 
@@ -707,8 +779,173 @@ int checkOptic(void){
     } else {
         return 1;
     }
-    
 }
+
+uint8_t CheckHwCompatInfo(void) {
+    struct hwCompatInfo nvramInfo;
+    struct hwCompatInfo currentInfo = myInfo;
+
+    // NVRAM 정보 읽기
+    if (ReadHwCompatInfoFromNVRAM(&nvramInfo) != 0) {
+        printf("Error reading NVRAM\n");
+        return 1;
+    }
+
+    // SSD0 정보 읽기
+    if (read_nvme_info("/dev/nvme1n1", currentInfo.ssd0_model_no, sizeof(currentInfo.ssd0_model_no),
+                                      currentInfo.ssd0_serial_no, sizeof(currentInfo.ssd0_serial_no)) != 0) {
+        printf("Error reading nvme0n1 info\n");
+        return 1;
+    }
+
+    // SSD1 정보 읽기
+    if (read_nvme_info("/dev/nvme0n1", currentInfo.ssd1_model_no, sizeof(currentInfo.ssd1_model_no),
+                                      currentInfo.ssd1_serial_no, sizeof(currentInfo.ssd1_serial_no)) != 0) {
+        printf("Error reading nvme1n1 info\n");
+        return 1;
+    }
+
+        printf("SSD CurrentInfo:\n");
+        printf(" Supplier Part No  : %s\n", currentInfo.supplier_part_no);
+        printf(" Supplier Serial No: %s\n", currentInfo.supplier_serial_no);
+        printf(" SSD0 Model No     : %s\n", currentInfo.ssd0_model_no);
+        printf(" SSD0 Serial No    : %s\n", currentInfo.ssd0_serial_no);
+        printf(" SSD1 Model No     : %s\n", currentInfo.ssd1_model_no);
+        printf(" SSD1 Serial No    : %s\n", currentInfo.ssd1_serial_no);
+        printf(" SW Part Number    : %s\n", currentInfo.sw_part_number);
+
+    // 7개 항목 모두 비교 (supplier 정보, sw_part_number는 고정값 비교)
+    if (strncmp(currentInfo.supplier_part_no, nvramInfo.supplier_part_no, sizeof(currentInfo.supplier_part_no)) != 0 ||
+        strncmp(currentInfo.supplier_serial_no, nvramInfo.supplier_serial_no, sizeof(currentInfo.supplier_serial_no)) != 0 ||
+        strncmp(currentInfo.sw_part_number, nvramInfo.sw_part_number, sizeof(currentInfo.sw_part_number)) != 0 ||
+        strncmp(currentInfo.ssd0_model_no, nvramInfo.ssd0_model_no, sizeof(currentInfo.ssd0_model_no)) != 0 ||
+        strncmp(currentInfo.ssd0_serial_no, nvramInfo.ssd0_serial_no, sizeof(currentInfo.ssd0_serial_no)) != 0 ||
+        strncmp(currentInfo.ssd1_model_no, nvramInfo.ssd1_model_no, sizeof(currentInfo.ssd1_model_no)) != 0 ||
+        strncmp(currentInfo.ssd1_serial_no, nvramInfo.ssd1_serial_no, sizeof(currentInfo.ssd1_serial_no)) != 0) {
+        return 1; // 하나라도 불일치 시 1 반환
+    }
+
+    return 0; // 모두 일치하면 0 반환
+}
+
+int checkHoldupModule(void){
+    // STM32로 HoldupModule 에서 데이터 읽기
+    //1이 정상
+    uint8_t holdupPFvalue = sendRequestHoldupPF();
+    //0 이 정상
+    uint8_t holdupCCvalue = sendRequestHoldupCC();
+
+    if ( holdupPFvalue == 1 && holdupCCvalue == 0) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+int checkStm32Status(void){
+    uint8_t stm32Status = sendStm32Status();
+
+    if ( stm32Status == 1 ) {
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+int checkPowerStatus(void){
+    uint8_t powerStatus = sendPowerStatus();
+
+    uint8_t overvoltage_mask = (1 << 0);
+    uint8_t undervoltage_mask = (1 << 1);
+    uint8_t overcurrent_mask = (1 << 2);
+
+    if ( powerStatus & (overvoltage_mask | undervoltage_mask | overcurrent_mask ) ) {
+        return 1;
+    } else {
+        return 0;
+    }
+
+}
+
+int checkLan7800(void){
+    char* otherIface = checkEthernetInterface();
+    char* iface;
+
+    if(strcmp( otherIface, "eth0") == 0 ){
+        iface = "eth1";
+    } else {
+        iface = "eth0";
+    }
+
+    char command[256];
+    snprintf(command, sizeof(command), "ip link show %s | grep -q 'state UP'", iface);
+
+    int status = system(command);
+    if (status == -1) {
+        perror("Failed to execute command");
+        return 1;  // 시스템 호출 실패 시 오류 반환
+    }
+
+    // system()의 반환값이 0이면  정상 작동
+    if (status == 0) {
+        printf(" LAN7800 (%s) is OK\n", iface);
+        return 0; // 정상
+    } else {
+        printf(" LAN7800 (%s) is Not OK\n", iface);
+        return 1; // 비정상
+    }
+}
+
+// USB1 상태 확인 함수
+int checkUSBc(void) {
+    FILE *file = fopen(USB1_PATH, "r");
+    if (!file) {
+        perror("Failed to open USB1 status file");
+        return 1; // 파일 접근 실패 시 비정상 처리
+    }
+
+    int authorized;
+    if (fscanf(file, "%d", &authorized) != 1) {
+        perror("Failed to read USB1 status");
+        fclose(file);
+        return 1; // 읽기 실패 시 비정상 처리
+    }
+    fclose(file);
+
+    if (authorized == 1) {
+        printf("USB1 is OK ");
+        return 0; // 정상
+    } else {
+        printf("USB1 is Not OK");
+        return 1; // 비정상
+    }
+}
+
+// USB2 상태 확인 함수
+int checkUSBa(void) {
+    FILE *file = fopen(USB2_PATH, "r");
+    if (!file) {
+        perror("Failed to open USB2 status file");
+        return 1; // 파일 접근 실패 시 비정상 처리
+    }
+
+    int authorized;
+    if (fscanf(file, "%d", &authorized) != 1) {
+        perror("Failed to read USB2 status");
+        fclose(file);
+        return 1; // 읽기 실패 시 비정상 처리
+    }
+    fclose(file);
+
+    if (authorized == 1) {
+        printf("USB2 정상 ");
+        return 0; // 정상
+    } else {
+        printf("USB2 비정상 ");
+        return 1; // 비정상
+    }
+}
+
 
 void RequestBit(uint32_t mtype) {
     uint32_t bitStatus = 0;
@@ -730,6 +967,14 @@ void RequestBit(uint32_t mtype) {
     bitStatus |= ((checkOptic() != 0) << 10);                  // Optic Transceiver 상태
     bitStatus |= ((checkTempSensor() != 0) << 11);             // 온도 센서 상태
     bitStatus |= ((checkPowerMonitor() != 0) << 12);           // 전력 모니터 상태
+    bitStatus |= ((checkHoldupModule() != 0) << 13);           // HoldupModule 상태
+    bitStatus |= ((checkStm32Status() != 0) << 14);            // stm32 상태
+    bitStatus |= ((checkLan7800() != 0) << 15);                // lan7800 상태
+    bitStatus |= ((checkPowerStatus() != 0) << 16);            // ac/dc 상태
+    bitStatus |= ((checkPowerStatus() != 0) << 17);            // dc/dc 상태
+    bitStatus |= ((checkUSBa() != 0) << 18);                   // usba 상태
+    bitStatus |= ((checkUSBc() != 0) << 19);                   // usbc 상태
+
 
     // 플래그 비트 설정 (31번 비트)
     bitStatus |= (1 << 31);
@@ -749,6 +994,13 @@ void RequestBit(uint32_t mtype) {
     printf("Optic Transceiver = %u\n", (bitStatus >> 10) & 1);
     printf("Temperature Sensor = %u\n", (bitStatus >> 11) & 1);
     printf("Power Monitor = %u\n", (bitStatus >> 12) & 1);
+    printf("Holdup Module = %u\n", (bitStatus >> 13) & 1);
+    printf("STM32 Status = %u\n", (bitStatus >> 14) & 1);
+    printf("Lan 7800 Status = %u\n", (bitStatus >> 15) & 1);
+    printf("AC/DC Status = %u\n", (bitStatus >> 16) & 1);
+    printf("DC/DC Status= %u\n", (bitStatus >> 17) & 1);
+    printf("USB A Status= %u\n", (bitStatus >> 18) & 1);
+    printf("USB C Status = %u\n", (bitStatus >> 19) & 1);
 
     // 에러 비트 확인
     if (bitStatus & 0x7FFFFFFF) {
@@ -759,6 +1011,53 @@ void RequestBit(uint32_t mtype) {
     // 결과 저장
     WriteBitResult(mtype, bitStatus);
     printf("RequestBit function completed, final bitStatus = 0x%08X\n", bitStatus);
+}
+
+void RequestCBIT(uint32_t mtype) {
+    uint32_t bitStatus = 0;
+
+    // DEBUG: 초기화 메시지 출력
+    printf("Starting RequestCBIT function, mtype = 0x%08X\n", mtype);
+
+    // CBIT 항목 상태 체크
+    bitStatus |= ((check_gpio_expander() != 0) << 0);          // GPIO Expander 상태
+    bitStatus |= ((checkEthernet() != 0) << 1);               // Ethernet PHY 상태
+    bitStatus |= ((checkNvram() != 0) << 2);                  // NVRAM 상태
+    bitStatus |= ((checkDiscrete_in() != 0) << 3);            // Discrete In 상태
+    bitStatus |= ((check_discrete_out() != 0) << 4);          // Discrete Out 상태
+    bitStatus |= ((checkRs232() != 0) << 5);                  // RS232 상태
+    bitStatus |= ((checkEthernetSwitch() != 0) << 6);         // Ethernet Switch 상태
+    bitStatus |= ((checkTempSensor() != 0) << 7);             // 온도 센서 상태
+    bitStatus |= ((checkPowerMonitor() != 0) << 8);           // 전력 모니터 상태
+    bitStatus |= ((checkHoldupModule() != 0) << 9);           // Holdup Module 상태
+    bitStatus |= ((checkStm32Status() != 0) << 10);           // STM32 상태
+
+    // 플래그 비트 설정 (31번 비트)
+    bitStatus |= (1 << 31);
+
+    // 결과 출력
+    printf("CBIT Test Results:\n");
+    printf("GPIO Expander = %u\n", (bitStatus >> 0) & 1);
+    printf("Ethernet PHY = %u\n", (bitStatus >> 1) & 1);
+    printf("NVRAM = %u\n", (bitStatus >> 2) & 1);
+    printf("Discrete In = %u\n", (bitStatus >> 3) & 1);
+    printf("Discrete Out = %u\n", (bitStatus >> 4) & 1);
+    printf("RS232 = %u\n", (bitStatus >> 5) & 1);
+    printf("Ethernet Switch = %u\n", (bitStatus >> 6) & 1);
+    printf("Temperature Sensor = %u\n", (bitStatus >> 7) & 1);
+    printf("Power Monitor = %u\n", (bitStatus >> 8) & 1);
+    printf("Holdup Module = %u\n", (bitStatus >> 9) & 1);
+    printf("STM32 Status = %u\n", (bitStatus >> 10) & 1);
+
+    // 에러 비트 확인
+    if (bitStatus & 0x7FFFFFFF) {
+        printf("CBIT error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
+        WriteBitErrorData(bitStatus, mtype);
+    }
+
+    // 결과 저장
+    WriteBitResult(mtype, bitStatus);
+    printf("RequestCBIT function completed, final bitStatus = 0x%08X\n", bitStatus);
 }
 
 uint32_t readtBitResult(uint32_t type) {
@@ -777,3 +1076,4 @@ uint32_t readtBitResult(uint32_t type) {
 
     return bitResult;
 }
+
