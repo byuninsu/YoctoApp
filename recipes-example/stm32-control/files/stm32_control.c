@@ -59,7 +59,7 @@ float sendCommand(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[2] = { command, 0x00 };
+    uint8_t tx_buf[4] = { command, 0x00, 0x00, 0x00 };
 	uint8_t tx_buf2[4] = { 0xFF,0xFF,0xFF,0xFF };
     uint8_t spi_rx_buf[4] = { 0 }; 
     float data;
@@ -117,7 +117,7 @@ uint8_t sendOnlyOne(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[2] = { command, 0x00 };
+    uint8_t tx_buf[4] = { command, 0x00, 0x00, 0x00 };
     float data;
 
     struct spi_ioc_transfer xfer[1] = {
@@ -147,7 +147,7 @@ void sendBootCondition(void) {
 
     spiInit();
 
-    uint8_t tx_buf[2] = { STM32_SPI_BOOTCONDITION, 0x00 };
+    uint8_t tx_buf[4] = { STM32_SPI_BOOTCONDITION, 0x00, 0x00, 0x00 };
 	uint8_t tx_buf2[1] = { 0xFF };
     uint8_t spi_rx_buf[1] = { 0 }; 
 
@@ -203,8 +203,40 @@ uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
 
     spiInit();
 
-    uint8_t tx_buf[1] = { command };
-	uint8_t tx_buf2[1] = { timeout };
+    uint8_t tx_buf[4] = { command, timeout, 0x00, 0x00 };
+
+    struct spi_ioc_transfer xfer = {
+        .tx_buf = (uintptr_t)tx_buf,
+        .rx_buf = 0,
+        .len = sizeof(tx_buf),
+        .delay_usecs = 0,
+        .speed_hz = speed,
+        .bits_per_word = bits
+    };
+
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer) < 0) {
+        perror("Failed to send command and timeout");
+        return 1;
+    }
+
+    printf("sendSetTimeout Command : %x Timeout : %x\n", tx_buf[0], tx_buf[1]);
+
+    if (fd != -1) {
+        close(fd);
+        fd = -1;
+    }
+
+    return 0;
+}
+
+uint8_t sendCommandForResponseOneByte(stm32_spi_reg command) {
+
+    spiInit();
+
+    uint8_t tx_buf[4] = { command, 0x00, 0x00, 0x00 };
+	uint8_t tx_buf2[2] = { 0xFF, 0xFF };
+    uint8_t spi_rx_buf[1] = { 0 }; 
+    float data;
 
     struct spi_ioc_transfer xfer[2] = {
         {
@@ -217,7 +249,7 @@ uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
         },
         {
             .tx_buf = (uintptr_t)tx_buf2,
-            .rx_buf = 0,
+            .rx_buf = (uintptr_t)spi_rx_buf,
             .len = sizeof(tx_buf2),
             .delay_usecs = 0,
             .speed_hz = speed,
@@ -227,32 +259,71 @@ uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
 
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
         perror("Failed to send command");
-        return 1;
-    }
-	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
-        perror("Failed to send  Setting data");
-        return 1;
+        return -1;
     }
 
-    printf("sendSetTimeout Command : %x Timeout : %x",tx_buf[0], tx_buf2[0]);
+	usleep(10000);
+
+	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+        perror("Failed to receive data");
+        return -1;
+    }
+
+    //rx_buf 내용 출력
+    for (int i = 0; i < sizeof(spi_rx_buf); i++) {
+        printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
+    }
 
     if (fd != -1) {
         close(fd);   
         fd = -1;     
     }
 
-    return 0;
-
+    return spi_rx_buf[0];
 }
 
-uint8_t sendCommandForResponseOneByte(stm32_spi_reg command) {
+uint8_t sendFourByte(stm32_spi_reg command, uint8_t firstVaule, uint8_t secondVaule, uint8_t thirdVaule ) {
 
     spiInit();
 
-    uint8_t tx_buf[2] = { command, 0x00 };
+    uint8_t tx_buf[4] = { command, firstVaule, secondVaule, thirdVaule };
+
+    printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
+        tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
+
+    struct spi_ioc_transfer xfer[1] = {
+        {
+            .tx_buf = (uintptr_t)tx_buf,
+            .rx_buf = 0,
+            .len = sizeof(tx_buf),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        },
+    };
+
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
+        perror("Failed to spi sendFourByte");
+        return 1;
+    }
+
+    if (fd != -1) {
+        close(fd);   
+        fd = -1;     
+    }
+    return 0;
+}
+
+uint8_t sendFourByteForResponse(stm32_spi_reg command, uint8_t firstVaule) {
+
+    spiInit();
+
+    uint8_t tx_buf[4] = { command, firstVaule, 0x00, 0x00 };
 	uint8_t tx_buf2[2] = { 0xFF, 0xFF };
     uint8_t spi_rx_buf[1] = { 0 }; 
-    float data;
+
+    printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
+        tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
 
     struct spi_ioc_transfer xfer[2] = {
         {
@@ -346,4 +417,27 @@ uint8_t sendPowerStatus(void){
 uint8_t sendStm32Status(void){
     return sendCommandForResponseOneByte(STM32_SPI_REQUEST_STM32_STATUS);
 }
+
+uint8_t  sendJetsonBootComplete(void){
+    return sendOnlyOne(STM32_SPI_SEND_BOOT_COMPLETE);
+}
+
+uint8_t sendSetLedState(uint8_t gpio, uint8_t value){
+    return sendFourByte(STM32_SPI_SEND_LED_SET_VALUE, gpio, value, 0x00);
+}
+
+uint8_t sendGetLedState(uint8_t gpio){
+    return sendFourByteForResponse(STM32_SPI_SEND_LED_GET_VALUE, gpio);
+}
+
+uint8_t sendConfSetLedState(uint8_t gpio, uint8_t value){
+    return sendFourByte(STM32_SPI_SEND_LED_CONF_SET_VALUE, gpio, value, 0x00);
+}
+
+uint8_t sendConfGetLedState(uint8_t gpio){
+    return sendFourByteForResponse(STM32_SPI_SEND_LED_CONF_GET_VALUE, gpio);
+}
+
+
+
 

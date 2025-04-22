@@ -13,6 +13,7 @@ SRC_URI = "file://init_dhcpcd \
            file://port6.sh \
            file://port9.sh \
            file://port10.sh \
+           file://enable_port.sh \
            file://copper_setting.sh"
 
 do_install() {
@@ -28,6 +29,7 @@ do_install() {
     install -m 0755 ${WORKDIR}/port6.sh ${D}${bindir}/port6.sh
     install -m 0755 ${WORKDIR}/port9.sh ${D}${bindir}/port9.sh
     install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/port10.sh
+    install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/enable_port.sh
     install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/copper_setting.sh
 }
 

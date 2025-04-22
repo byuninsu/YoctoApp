@@ -13,6 +13,7 @@ static uint32_t speed = 4500000;
 static uint8_t bits = 8;
 static uint8_t mode = 0;
 static int fd; // device
+
     
 uint32_t nvramInit(void) {
     int ret = 0;
@@ -63,9 +64,9 @@ uint32_t nvramInit(void) {
         return 1;
     }
 
-    printf("spi mode: 0x%x\n", mode);
-    printf("spi bits per word: %d\n", bits);
-    printf("spi max speed: %d Hz (%d KHz)\n", speed, speed/1000);
+    // printf("spi mode: 0x%x\n", mode);
+    // printf("spi bits per word: %d\n", bits);
+    // printf("spi max speed: %d Hz (%d KHz)\n", speed, speed/1000);
 
     return 0; // 초기화 성공
 }
@@ -126,7 +127,7 @@ uint32_t ReadNVRAMValue(uint32_t address) {
 }
 
 uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
-    printf("WriteNVRAMValue input value = 0x%02x at ADdr = 0x%08x\n", value, address);
+    // input value = 0x%02x at ADdr = 0x%08x\n", value, address);
 
     uint8_t tx_buf[1];
     uint8_t tx_command_buf[5];
@@ -648,6 +649,36 @@ uint32_t ReadHwCompatInfoFromNVRAM(struct hwCompatInfo *info) {
 
     return result;
 }
+
+uint32_t WriteQtTestValueToNVRAM(const char *value) {
+    uint32_t result = 0;
+
+    for (int i = 0; value[i] != '\0'; i++) {
+        WriteNVRAMValue(NVRAM_QT_TEST_ADDR + i, value[i]);
+    }
+
+    return result;
+}
+
+uint32_t ReadQtTestValueFromNVRAM(char *outBuffer) {
+    if (!outBuffer) return 1;
+
+    for (int i = 0; i < 20; i++) {
+        char c = ReadNVRAMValue(NVRAM_QT_TEST_ADDR + i);
+
+        // 문자열 종료 조건
+        if (c == '\0') {
+            outBuffer[i] = '\0';
+            return 0;  // 정상 종료
+        }
+
+        outBuffer[i] = c;
+    }
+
+    // 20바이트를 넘도록 \0을 못 찾았으면 잘못된 값 → 에러
+    return 2;
+}
+
 
 
 

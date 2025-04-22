@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <cjson/cJSON.h>
 #include "nvram_control.h"
 
 #define JSON_FILE_PATH "/mnt/dataSSD/ssdLog_test.json"
@@ -10,45 +11,69 @@
 #define LOG_INTERVAL 900 // 1 minute in seconds
 
 // 시간 계산 함수
-void update_time(int *hours, int *minutes) {
-    // 분 단위로 변환하여 추가
-    *minutes = *minutes + LOG_INTERVAL / 60;
-
-    // 남은 초를 고려하여 시간 계산
+void update_time(int *hours, int *minutes, int *seconds) {
+    printf("update_time ++++ hours :%d , minutes :%d, seconds :%d\n", *hours, *minutes, *seconds);
+    *seconds += LOG_INTERVAL;
+    *minutes += *seconds / 60;
+    *seconds %= 60;
+    
     if (*minutes >= 60) {
-        *hours += *minutes / 60;    // 시간 증가
-        *minutes %= 60;             // 남은 분
+        *hours += *minutes / 60;
+        *minutes %= 60;
     }
 }
 
 // 파일에서 마지막 기록된 시간 값을 읽어 초기화
-void initialize_time(int *hours, int *minutes) {
+void initialize_time(int *hours, int *minutes, int *seconds) {
     FILE *file = fopen(JSON_FILE_PATH, "r");
     if (!file) {
-        // 파일이 없으면 0시간 0분부터 시작
         *hours = 0;
         *minutes = 0;
+        *seconds = 0;
         return;
     }
 
-    char line[256];
-    char last_time[9] = "00000000"; // 기본값
-    while (fgets(line, sizeof(line), file)) {
-        // 읽은 줄에서 "time": "HHMMSS"를 찾아 시간 값 추출
-        char *time_ptr = strstr(line, "\"time\": \"");
-        if (time_ptr) {
-            sscanf(time_ptr + 9, "%8s", last_time); // "time": "HHMMSS" 값만 저장
-        }
+    fseek(file, 0, SEEK_END);
+    long filesize = ftell(file);
+    rewind(file);
+
+    char *content = (char *)malloc(filesize + 1);
+    if (!content) {
+        fclose(file);
+        perror("malloc failed");
+        return;
     }
+
+    fread(content, 1, filesize, file);
+    content[filesize] = '\0'; 
     fclose(file);
 
-    // 마지막 시간 값에서 hours, minutes, seconds 파싱
-    int seconds = 0;
-    sscanf(last_time, "%4d%2d%2d", hours, minutes, &seconds);
-    *minutes += seconds / 60; // 초를 분으로 변환
-    *hours += *minutes / 60;  // 분을 시간으로 변환
-    *minutes %= 60;           // 초과된 분 정리
+    char *line = strtok(content, "\n");
+    char last_time[9] = "00000000";
+
+    while (line != NULL) {
+        cJSON *json = cJSON_Parse(line);
+        if (json) {
+            cJSON *time_item = cJSON_GetObjectItem(json, "time");
+            if (cJSON_IsString(time_item) && time_item->valuestring != NULL) {
+                strncpy(last_time, time_item->valuestring, 8);
+                last_time[8] = '\0'; 
+            }
+            cJSON_Delete(json);
+        }
+        line = strtok(NULL, "\n");
+    }
+
+    free(content);
+
+    sscanf(last_time, "%4d%2d%2d", hours, minutes, seconds);
+
+    *minutes += *seconds / 60;
+    *hours += *minutes / 60;
+    *minutes %= 60;
+    *seconds %= 60;
 }
+
 
 char* get_ssd_available_capacity() {
     char command[256];
@@ -105,12 +130,13 @@ int main() {
     int firstTime = 0;
     int hours = 0;
     int minutes = 0;
+    int seconds = 0;
 
 
     // 파일에서 초기 시간값 설정
-    initialize_time(&hours, &minutes);
+    initialize_time(&hours, &minutes, &seconds);
 
-    printf("check_timestack ++ , initialize_time  hours: %d, minutes : %d",hours, minutes);
+    printf("check_timestack ++ , initialize_time  hours: %d, minutes : %d \n",hours, minutes);
     fflush(stdout);
 
     while (1) {
@@ -120,7 +146,7 @@ int main() {
             sleep(LOG_INTERVAL); 
         } 
 
-        update_time(&hours, &minutes); // 시간 업데이트
+        update_time(&hours, &minutes, &seconds); // 시간 업데이트
 
         char formatted_time[9];
         snprintf(formatted_time, sizeof(formatted_time), "%04d%02d%02d", hours, minutes, 0); // HHHHMMSS format

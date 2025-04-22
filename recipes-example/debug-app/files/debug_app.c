@@ -100,13 +100,13 @@ int main(int argc, char *argv[]) {
                     uint8_t port = (uint8_t)strtol(argv[5], NULL, 16);
                     uint8_t value = (uint8_t)strtol(argv[6], NULL, 16);
                     printf("main setGpioConf inpu value : %d\n", value);
-                    setGpioConf(port, value);
+                    setDiscreteConf(port, value);
                 }
             } else if (strcmp(argv[3], "get") == 0) {
                 if (strcmp(argv[4], "conf") == 0) {
                     uint8_t port = (uint8_t)strtol(argv[5], NULL, 16);
                     uint8_t value;
-                    getConfState(port, &value);
+                    getDiscreteConf(port, &value);
                 } else if (strcmp(argv[4], "gpio") == 0) {
                     uint8_t port = (uint8_t)strtol(argv[5], NULL, 16);
                     getDiscreteOut(port);
@@ -141,6 +141,8 @@ int main(int argc, char *argv[]) {
             } else {
                 WriteSystemLogReasonCount(8);
             }
+
+            //sendJetsonBootComplete();
         } 
     } 
 
@@ -231,6 +233,8 @@ int main(int argc, char *argv[]) {
                 } else {
                     printf("Invalid GPIO number or value. GPIO should be 0-15 and value should be 0 or 1.\n");
                 }
+            } else if (strcmp(argv[3], "green") == 0) {
+                sendJetsonBootComplete();
             } else if (strcmp(argv[3], "conf") == 0) {
                 uint8_t port = (uint8_t)strtol(argv[4], NULL, 16);
                 uint8_t value = (uint8_t)strtol(argv[5], NULL, 16);
@@ -238,26 +242,11 @@ int main(int argc, char *argv[]) {
                 setGpioConf(port, value);
             } else if (strcmp(argv[3], "status") == 0) {
                 if(strcmp(argv[4], "green") == 0) {
-                    InitializeAllLEDs();
-                    if (setLedState(0x01, 1) == STATUS_SUCCESS) {
-                        printf("LED 1 set to Green.\n");
-                    } else {
-                        printf("Failed to set LED 1 to Green.\n");
-                    }
+                    sendJetsonBootComplete();
                 } else if ( strcmp(argv[4], "red") == 0 ) {
-                    InitializeAllLEDs();
-                    if (setLedState(0x02, 1) == STATUS_SUCCESS) {
-                        printf("LED 1 set to Red.\n");
-                    } else {
-                        printf("Failed to set LED 1 to Red.\n");
-                    }
+
                 } else if ( strcmp(argv[4], "yellow") == 0 ) {
-                    InitializeAllLEDs();
-                    if (setLedState(0x00, 1) == STATUS_SUCCESS) {
-                        printf("LED 1 set to Yellow.\n");
-                    } else {
-                        printf("Failed to set LED 1 to Yellow.\n");
-                    }
+
                 } else if (strcmp(argv[4], "sequence") == 0) {
                     printf("Starting LED sequence: Yellow , Green , Red\n");
 
@@ -297,11 +286,12 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[2], "get") == 0) {
             if (strcmp(argv[3], "conf") == 0) {
                 uint8_t port = (uint8_t)strtol(argv[4], NULL, 16);
-                uint8_t value;
-                getConfState(port, &value);
+                uint8_t conf = getConfState(port);
+                 printf("getConfState(port=0x%02X) 0x%02X\n", port, conf);
             } else if (strcmp(argv[3], "gpio") == 0) {
                 uint8_t port = (uint8_t)strtol(argv[4], NULL, 16);
-                getGpioState(port);
+                uint8_t gpio = getGpioState(port);
+                printf("getGpioState(port=0x%02X) 0x%02X\n", port, gpio);
             }
         } else {
             printf("Invalid command. Use set, conf, or get.\n");
@@ -430,18 +420,18 @@ else if (strcmp(argv[1], "nvram") == 0) {
     }
 
     // Handling 'holdup interrupt' start commands
-    else if (strcmp(argv[1], "holdup") == 0) {
-        if (strcmp(argv[2], "start") == 0) {
-            printf("Starting holdup process: hold_up_callback\n");
-            system("hold_up_callback &");  // 백그라운드 실행
-        } else if (strcmp(argv[2], "stop") == 0) {
-            printf("Stopping holdup process...\n");
-            system("pkill -f hold_up_callback");  // 실행 중인 프로세스 종료
-        } else {
-            printf("Invalid command: %s\n", argv[2]);
-            return 1;
-        }
-    }
+    // else if (strcmp(argv[1], "holdup") == 0) {
+    //     if (strcmp(argv[2], "start") == 0) {
+    //         printf("Starting holdup process: hold_up_callback\n");
+    //         system("hold_up_callback &");  // 백그라운드 실행
+    //     } else if (strcmp(argv[2], "stop") == 0) {
+    //         printf("Stopping holdup process...\n");
+    //         system("pkill -f hold_up_callback");  // 실행 중인 프로세스 종료
+    //     } else {
+    //         printf("Invalid command: %s\n", argv[2]);
+    //         return 1;
+    //     }
+    // }
 
     // Handling 'stm32' commands
     else if (strcmp(argv[1], "stm32") == 0) {
@@ -557,7 +547,15 @@ else if (strcmp(argv[1], "nvram") == 0) {
 
         if (strcmp(argv[2], "on") == 0) {
             setVlanStp();
-        } 
+        }
+
+        if (strcmp(argv[2], "disable") == 0) {
+            setPortDisableWithout2();
+        }
+
+        if (strcmp(argv[2], "enable") == 0) {
+            setPortEnableWithout2();
+        }
 
         return 0;
     }
@@ -592,6 +590,11 @@ else if (strcmp(argv[1], "nvram") == 0) {
 
             if ((discreteInValue & 0x0020) == 0x0020 && (discreteInValue & 0x0040) == 0) {
                 char command[256];
+
+                setVlanStp();
+                setPortDisableWithout2();
+
+
                 snprintf(command, sizeof(command), "ethernet-test broadcast start &");
                 int ret = system(command);
                 if (ret == -1) {

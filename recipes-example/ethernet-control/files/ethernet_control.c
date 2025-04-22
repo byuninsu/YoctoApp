@@ -296,10 +296,60 @@ uint8_t setVlanStp(void) {
         }
     }
 
-    // 포트 1 ~ 10(A)까지 VLAN 설정
+    // 포트 2 ~ 10(A)까지 VLAN 으로 독립화 수행
     for (int port = 2; port <= MAX_PORT; port++) {
         snprintf(command, sizeof(command),
-                 "%s %s 0x%02x 0x06 0x0002",
+                 "%s %s 0x%02x 0x06 0x0802",
+                 "mdio-tool w", iface, port);
+
+        printf("Executing: %s\n", command);
+        system(command);
+    }
+
+    return 0;
+}
+
+uint8_t setPortDisableWithout2(void) {
+
+    char command[256];
+
+    // MAC 주소가 48:로 시작하는 인터페이스가 있는지 확인
+    if (iface[0] == '\0') {
+        if (checkEthernetInterface() == NULL) {
+            printf("not found ethernet interface contain 48: \n");
+            return 1;
+        }
+    }
+
+    // 포트 3 ~ 10(A) port disable
+    for (int port = 3; port <= MAX_PORT; port++) {
+        snprintf(command, sizeof(command),
+                 "%s %s 0x%02x 0x04 0x007c",
+                 "mdio-tool w", iface, port);
+
+        printf("Executing: %s\n", command);
+        system(command);
+    }
+
+    return 0;
+}
+
+uint8_t setPortEnableWithout2(void) {
+
+    char command[256];
+
+    // MAC 주소가 48:로 시작하는 인터페이스가 있는지 확인
+    if (iface[0] == '\0') {
+        if (checkEthernetInterface() == NULL) {
+            printf("not found ethernet interface contain 48: \n");
+            return 1;
+        }
+    }
+
+    // 포트 3 ~ 10(A) port disable
+    for (int port = 3; port <= MAX_PORT; port++) {
+        snprintf(command, sizeof(command),
+                 "%s %s 0x%02x 0x04 0x007f",
                  "mdio-tool w", iface, port);
 
         printf("Executing: %s\n", command);

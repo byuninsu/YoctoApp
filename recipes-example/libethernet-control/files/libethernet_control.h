@@ -20,6 +20,8 @@ char * checkEthernetInterface();
 uint8_t  setEthernetPort(int port, int state);
 uint32_t  getEthernetPort(int port);
 uint8_t setVlanStp(void);
+uint8_t setPortDisableWithout2(void);
+uint8_t setPortEnableWithout2(void);
 
 #ifdef __cplusplus
 }

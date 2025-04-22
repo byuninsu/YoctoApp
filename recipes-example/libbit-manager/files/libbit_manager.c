@@ -404,32 +404,32 @@ int check_gpio_expander() {
     int status;
     uint8_t readConfValue0 = 0;
     uint8_t readConfValue1 = 0;
-    char command[512];
     uint32_t result = 0;
+    char command[512];
 
 
     // led-control Expander 0 setting
 
-    status = setGpioConf(0, 0x00);
+    status = setDiscreteConf(0, 0x00);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     }
 
-    status = setGpioConf(1, 0x00);
+    status = setDiscreteConf(1, 0x00);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     }
 
-    result = getConfState(0, &readConfValue0);
-    if (readConfValue0 == 1) {
+    result = getDiscreteConf(0, &readConfValue0);
+    if (result == 1) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     } 
 
-    result = getConfState(1, &readConfValue1);
-    if (readConfValue1 == 1) {
+    result = getDiscreteConf(1, &readConfValue1);
+    if (result == 1) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     } 
@@ -439,13 +439,13 @@ int check_gpio_expander() {
     }
 
     // Restore to original state after testing
-    status = setGpioConf(0, 0xFF);
+    status = setDiscreteConf(0, 0xFF);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     }
 
-    status = setGpioConf(1, 0xFF);
+    status = setDiscreteConf(1, 0xFF);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
@@ -493,13 +493,13 @@ int check_discrete_out() {
     }
 
     // Restore to original state after testing
-    status = setGpioConf(0, 0xFF);
+    status = setDiscreteConf(0, 0xFF);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     }
 
-    status = setGpioConf(1, 0xFF);
+    status = setDiscreteConf(1, 0xFF);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
@@ -783,7 +783,7 @@ int checkOptic(void){
 
 uint8_t CheckHwCompatInfo(void) {
     struct hwCompatInfo nvramInfo;
-    struct hwCompatInfo currentInfo = myInfo;
+    struct hwCompatInfo currentInfo;
 
     // NVRAM 정보 읽기
     if (ReadHwCompatInfoFromNVRAM(&nvramInfo) != 0) {
@@ -791,41 +791,44 @@ uint8_t CheckHwCompatInfo(void) {
         return 1;
     }
 
+    // NVRAM에서 고정값 항목 복사
+    strncpy(currentInfo.supplier_part_no, nvramInfo.supplier_part_no, sizeof(currentInfo.supplier_part_no));
+    strncpy(currentInfo.supplier_serial_no, nvramInfo.supplier_serial_no, sizeof(currentInfo.supplier_serial_no));
+    strncpy(currentInfo.sw_part_number, nvramInfo.sw_part_number, sizeof(currentInfo.sw_part_number));
+
     // SSD0 정보 읽기
     if (read_nvme_info("/dev/nvme1n1", currentInfo.ssd0_model_no, sizeof(currentInfo.ssd0_model_no),
                                       currentInfo.ssd0_serial_no, sizeof(currentInfo.ssd0_serial_no)) != 0) {
-        printf("Error reading nvme0n1 info\n");
+        printf("Error reading nvme1n1 info\n");
         return 1;
     }
 
     // SSD1 정보 읽기
     if (read_nvme_info("/dev/nvme0n1", currentInfo.ssd1_model_no, sizeof(currentInfo.ssd1_model_no),
                                       currentInfo.ssd1_serial_no, sizeof(currentInfo.ssd1_serial_no)) != 0) {
-        printf("Error reading nvme1n1 info\n");
+        printf("Error reading nvme0n1 info\n");
         return 1;
     }
 
-        printf("SSD CurrentInfo:\n");
-        printf(" Supplier Part No  : %s\n", currentInfo.supplier_part_no);
-        printf(" Supplier Serial No: %s\n", currentInfo.supplier_serial_no);
-        printf(" SSD0 Model No     : %s\n", currentInfo.ssd0_model_no);
-        printf(" SSD0 Serial No    : %s\n", currentInfo.ssd0_serial_no);
-        printf(" SSD1 Model No     : %s\n", currentInfo.ssd1_model_no);
-        printf(" SSD1 Serial No    : %s\n", currentInfo.ssd1_serial_no);
-        printf(" SW Part Number    : %s\n", currentInfo.sw_part_number);
+    // 로그 출력
+    printf("SSD CurrentInfo:\n");
+    printf(" Supplier Part No  : %s\n", currentInfo.supplier_part_no);
+    printf(" Supplier Serial No: %s\n", currentInfo.supplier_serial_no);
+    printf(" SSD0 Model No     : %s\n", currentInfo.ssd0_model_no);
+    printf(" SSD0 Serial No    : %s\n", currentInfo.ssd0_serial_no);
+    printf(" SSD1 Model No     : %s\n", currentInfo.ssd1_model_no);
+    printf(" SSD1 Serial No    : %s\n", currentInfo.ssd1_serial_no);
+    printf(" SW Part Number    : %s\n", currentInfo.sw_part_number);
 
-    // 7개 항목 모두 비교 (supplier 정보, sw_part_number는 고정값 비교)
-    if (strncmp(currentInfo.supplier_part_no, nvramInfo.supplier_part_no, sizeof(currentInfo.supplier_part_no)) != 0 ||
-        strncmp(currentInfo.supplier_serial_no, nvramInfo.supplier_serial_no, sizeof(currentInfo.supplier_serial_no)) != 0 ||
-        strncmp(currentInfo.sw_part_number, nvramInfo.sw_part_number, sizeof(currentInfo.sw_part_number)) != 0 ||
-        strncmp(currentInfo.ssd0_model_no, nvramInfo.ssd0_model_no, sizeof(currentInfo.ssd0_model_no)) != 0 ||
+    // SSD 정보만 비교
+    if (strncmp(currentInfo.ssd0_model_no, nvramInfo.ssd0_model_no, sizeof(currentInfo.ssd0_model_no)) != 0 ||
         strncmp(currentInfo.ssd0_serial_no, nvramInfo.ssd0_serial_no, sizeof(currentInfo.ssd0_serial_no)) != 0 ||
         strncmp(currentInfo.ssd1_model_no, nvramInfo.ssd1_model_no, sizeof(currentInfo.ssd1_model_no)) != 0 ||
         strncmp(currentInfo.ssd1_serial_no, nvramInfo.ssd1_serial_no, sizeof(currentInfo.ssd1_serial_no)) != 0) {
-        return 1; // 하나라도 불일치 시 1 반환
+        return 1; // SSD 정보 불일치
     }
 
-    return 0; // 모두 일치하면 0 반환
+    return 0; // 일치
 }
 
 int checkHoldupModule(void){
@@ -877,22 +880,13 @@ int checkLan7800(void){
         iface = "eth0";
     }
 
-    char command[256];
-    snprintf(command, sizeof(command), "ip link show %s | grep -q 'state UP'", iface);
-
-    int status = system(command);
-    if (status == -1) {
-        perror("Failed to execute command");
-        return 1;  // 시스템 호출 실패 시 오류 반환
-    }
-
-    // system()의 반환값이 0이면  정상 작동
-    if (status == 0) {
-        printf(" LAN7800 (%s) is OK\n", iface);
-        return 0; // 정상
+    // 해당 인터페이스가 존재하는지만 확인
+    char path[256];
+    snprintf(path, sizeof(path), "/sys/class/net/%s", iface);
+    if (access(path, F_OK) == 0) {
+        return 0;  // 정상
     } else {
-        printf(" LAN7800 (%s) is Not OK\n", iface);
-        return 1; // 비정상
+        return 1;  // 비정상
     }
 }
 
@@ -938,10 +932,8 @@ int checkUSBa(void) {
     fclose(file);
 
     if (authorized == 1) {
-        printf("USB2 정상 ");
         return 0; // 정상
     } else {
-        printf("USB2 비정상 ");
         return 1; // 비정상
     }
 }
@@ -981,26 +973,26 @@ void RequestBit(uint32_t mtype) {
 
     // 결과 출력 (한 번에 출력)
     printf("Test Results:\n");
-    printf("GPU = %u\n", (bitStatus >> 0) & 1);
-    printf("SSD(Data) = %u\n", (bitStatus >> 1) & 1);
-    printf("GPIO Expander = %u\n", (bitStatus >> 2) & 1);
-    printf("Ethernet = %u\n", (bitStatus >> 3) & 1);
-    printf("NVRAM = %u\n", (bitStatus >> 4) & 1);
-    printf("Discrete In = %u\n", (bitStatus >> 5) & 1);
-    printf("Discrete Out = %u\n", (bitStatus >> 6) & 1);
-    printf("RS232 = %u\n", (bitStatus >> 7) & 1);
-    printf("SSD(OS) = %u\n", (bitStatus >> 8) & 1);
-    printf("Ethernet Switch = %u\n", (bitStatus >> 9) & 1);
-    printf("Optic Transceiver = %u\n", (bitStatus >> 10) & 1);
-    printf("Temperature Sensor = %u\n", (bitStatus >> 11) & 1);
-    printf("Power Monitor = %u\n", (bitStatus >> 12) & 1);
-    printf("Holdup Module = %u\n", (bitStatus >> 13) & 1);
-    printf("STM32 Status = %u\n", (bitStatus >> 14) & 1);
-    printf("Lan 7800 Status = %u\n", (bitStatus >> 15) & 1);
-    printf("AC/DC Status = %u\n", (bitStatus >> 16) & 1);
-    printf("DC/DC Status= %u\n", (bitStatus >> 17) & 1);
-    printf("USB A Status= %u\n", (bitStatus >> 18) & 1);
-    printf("USB C Status = %u\n", (bitStatus >> 19) & 1);
+    printf("%-20s = %u\n", "GPU",                 (bitStatus >> 0)  & 1);
+    printf("%-20s = %u\n", "SSD(Data)",           (bitStatus >> 1)  & 1);
+    printf("%-20s = %u\n", "GPIO Expander",       (bitStatus >> 2)  & 1);
+    printf("%-20s = %u\n", "Ethernet",            (bitStatus >> 3)  & 1);
+    printf("%-20s = %u\n", "NVRAM",               (bitStatus >> 4)  & 1);
+    printf("%-20s = %u\n", "Discrete In",         (bitStatus >> 5)  & 1);
+    printf("%-20s = %u\n", "Discrete Out",        (bitStatus >> 6)  & 1);
+    printf("%-20s = %u\n", "RS232",               (bitStatus >> 7)  & 1);
+    printf("%-20s = %u\n", "SSD(OS)",             (bitStatus >> 8)  & 1);
+    printf("%-20s = %u\n", "Ethernet Switch",     (bitStatus >> 9)  & 1);
+    printf("%-20s = %u\n", "Optic Transceiver",   (bitStatus >> 10) & 1);
+    printf("%-20s = %u\n", "Temperature Sensor",  (bitStatus >> 11) & 1);
+    printf("%-20s = %u\n", "Power Monitor",       (bitStatus >> 12) & 1);
+    printf("%-20s = %u\n", "Holdup Module",       (bitStatus >> 13) & 1);
+    printf("%-20s = %u\n", "STM32 Status",        (bitStatus >> 14) & 1);
+    printf("%-20s = %u\n", "LAN7800 Status",      (bitStatus >> 15) & 1);
+    printf("%-20s = %u\n", "AC/DC Status",        (bitStatus >> 16) & 1);
+    printf("%-20s = %u\n", "DC/DC Status",        (bitStatus >> 17) & 1);
+    printf("%-20s = %u\n", "USB A Status",        (bitStatus >> 18) & 1);
+    printf("%-20s = %u\n", "USB C Status",        (bitStatus >> 19) & 1);
 
     // 에러 비트 확인
     if (bitStatus & 0x7FFFFFFF) {
@@ -1076,4 +1068,5 @@ uint32_t readtBitResult(uint32_t type) {
 
     return bitResult;
 }
+
 

@@ -47,7 +47,9 @@ typedef enum {
     NVRAM_SSD1_MODEL_NO    = 0x78,   
     NVRAM_SSD1_SERIAL_NO   = 0x88,   
     NVRAM_SW_PART_NO       = 0x98,   
-    NVRAM_SW_SERIAL_NO     = 0xA8 
+    NVRAM_SW_SERIAL_NO     = 0xA8,
+    
+    NVRAM_QT_TEST_ADDR     = 0xBC 
 } NvramAddress;
 
 
@@ -87,6 +89,8 @@ uint32_t ReadBootModeStatus(void);
 uint32_t InitializeNVRAMToZero(void);
 uint32_t WriteHwCompatInfoToNVRAM(const struct hwCompatInfo *info);
 uint32_t ReadHwCompatInfoFromNVRAM(struct hwCompatInfo *info);
+uint32_t WriteQtTestValueToNVRAM(const char *value);
+uint32_t ReadQtTestValueFromNVRAM(char *outBuffer);
 
 
 #endif  // NVRAM_CONTROL_H

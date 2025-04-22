@@ -1,4 +1,4 @@
-#include "liboptic_control.h"
+#include "optic_control.h"
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 #include <fcntl.h>
@@ -90,7 +90,8 @@ uint8_t setOpticPort(void) {
         "/usr/bin/port3.sh",
         "/usr/bin/port4.sh",
         "/usr/bin/port5.sh",
-        "/usr/bin/port6.sh"
+        "/usr/bin/port6.sh",
+        "enable_port.sh"
     };
 
     size_t num_scripts = sizeof(optic_scripts) / sizeof(optic_scripts[0]);
@@ -122,11 +123,8 @@ uint8_t setOpticPort(void) {
 }
 
 uint8_t setDefaultPort(void) {
-    const char *scripts[] = {
-        "/usr/bin/copper_setting.sh"
-    };
-    const size_t numScripts = sizeof(scripts) / sizeof(scripts[0]);
-
+    const char *script = "/usr/bin/copper_setting.sh";
+    "enable_port.sh"
     uint8_t result = 0; // 0: 성공, 1: 실패
 
     char *iface = checkEthernetInterface();
@@ -136,19 +134,18 @@ uint8_t setDefaultPort(void) {
         return 1; // 실패
     }
 
-    for (size_t i = 0; i < numScripts; ++i) {
-        char command[256];
-        snprintf(command, sizeof(command), "%s %s", scripts[i], iface);
+    char command[256];
+    snprintf(command, sizeof(command), "%s %s", script, iface);
 
-        int status = system(command);
-        if (status == -1 || WEXITSTATUS(status) != 0) {
-            printf("Failed to execute %s\n", scripts[i]);
-            result = 1;
-        } else {
-            printf("Executed %s successfully\n", scripts[i]);
-        }
+    int status = system(command);
+    if (status == -1 || WEXITSTATUS(status) != 0) {
+        // 스크립트 실행 실패 처리
+        printf("Failed to execute %s\n", script);
+        result = 1; // 실패 상태로 업데이트
+    } else {
+        // 스크립트 실행 성공 처리
+        printf("Executed %s successfully\n", script);
     }
 
     return result;
 }
-

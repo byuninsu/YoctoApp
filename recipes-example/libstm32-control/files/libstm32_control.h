@@ -16,7 +16,12 @@ typedef enum {
     STM32_SPI_REQUEST_HOLDUP_CC = 0x21,
     STM32_SPI_REQUEST_HOLDUP_PF = 0x22,
     STM32_SPI_REQUEST_POWER_STATUS = 0x23,
-    STM32_SPI_REQUEST_STM32_STATUS = 0x29
+    STM32_SPI_REQUEST_STM32_STATUS = 0x29,
+    STM32_SPI_SEND_BOOT_COMPLETE = 0x31,
+    STM32_SPI_SEND_LED_SET_VALUE = 0x32,
+    STM32_SPI_SEND_LED_GET_VALUE = 0x33,
+    STM32_SPI_SEND_LED_CONF_SET_VALUE = 0x34,
+    STM32_SPI_SEND_LED_CONF_GET_VALUE = 0x35
 } stm32_spi_reg;
 
 
@@ -40,6 +45,11 @@ uint8_t sendRequestHoldupPF(void);
 uint8_t sendRequestHoldupCC(void);
 uint8_t sendPowerStatus(void);
 uint8_t sendStm32Status(void);
+uint8_t sendJetsonBootComplete(void);
+uint8_t sendSetLedState(uint8_t gpio, uint8_t value);
+uint8_t sendGetLedState(uint8_t gpio);
+uint8_t sendConfSetLedState(uint8_t gpio, uint8_t value);
+uint8_t sendConfGetLedState(uint8_t gpio);
 
 #endif // STM32_CONTROL_H
 

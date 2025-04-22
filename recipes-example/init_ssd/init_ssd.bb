@@ -13,7 +13,7 @@ do_install() {
 }
 
 INITSCRIPT_NAME = "init_ssd"
-INITSCRIPT_PARAMS = "defaults"
+INITSCRIPT_PARAMS = "start 18 2 3 4 5 . stop 90 0 1 6 ."
 
 inherit update-rc.d
 

@@ -19,8 +19,6 @@ case "$1" in
     sleep 1
     /usr/bin/debug-app ethernet nego disable
     sleep 1
-    /usr/bin/debug-app holdup start
-    sleep 1
     /usr/bin/debug-app bootmode check
     sleep 1
     /usr/bin/debug-app bootmode phy start

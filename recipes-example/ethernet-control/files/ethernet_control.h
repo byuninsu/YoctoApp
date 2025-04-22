@@ -6,6 +6,11 @@
 #define STATUS_SUCCESS 0x00
 #define STATUS_ERROR   0x01
 
+// GPU_API 매크로 정의
+#ifndef GPU_API
+#define GPU_API  // 빈 정의로 설정
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -14,8 +19,9 @@ extern "C" {
 char * checkEthernetInterface();
 uint8_t  setEthernetPort(int port, int state);
 uint32_t  getEthernetPort(int port);
-void setEthernetStp(int value);
 uint8_t setVlanStp(void);
+uint8_t setPortDisableWithout2(void);
+uint8_t setPortEnableWithout2(void);
 
 #ifdef __cplusplus
 }

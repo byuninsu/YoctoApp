@@ -6,6 +6,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 PN = "check-timestack"
 
 DEPENDS += "nvram-control"
+DEPENDS += "cjson"
 
 SRC_URI = "file://check_timestack.c \
            file://check_timestack"
@@ -14,9 +15,11 @@ SRC_URI = "file://check_timestack.c \
 do_compile() {
     ${CC} ${CFLAGS} ${LDFLAGS} \
     -I${STAGING_INCDIR}/nvram-control \
+    -I${STAGING_INCDIR}/cjson \
     ${WORKDIR}/check_timestack.c \
     -o ${B}/check_timestack \
-    -lnvram-control
+    -lnvram-control \
+    -lcjson 
 }
 
 # Installation

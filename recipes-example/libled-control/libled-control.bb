@@ -6,14 +6,22 @@ PACKAGE_NAME = "libled-control"
 
 PN = "libled-control"
 
+DEPENDS += "stm32-control"
+
 SRC_URI = "file://libled_control.c \
            file://libled_control.h"
            
 S = "${WORKDIR}"
 
 do_compile() {
-    ${CC} ${CFLAGS} -fPIC -c libled_control.c -o libled_control.o
-    ${CC} ${LDFLAGS} -shared -Wl,--hash-style=gnu -o libled-control.so.1.0 libled_control.o
+    ${CC} ${CFLAGS} \
+        -I${STAGING_INCDIR}/stm32-control \
+        -fPIC -c libled_control.c -o libled_control.o
+
+    ${CC} ${LDFLAGS} \
+        -L${STAGING_LIBDIR} -lstm32-control \
+        -shared -Wl,--hash-style=gnu -o libled-control.so.1.0 libled_control.o
+
     ln -sf libled-control.so.1.0 libled-control.so
 }
 
