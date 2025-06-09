@@ -9,6 +9,7 @@ extern "C" {
 
 uint8_t ActivateRS232(void);
 uint8_t DeactivateRS232(void);
+int isRS232Available(void);
 
 #ifdef __cplusplus
 }

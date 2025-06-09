@@ -17,7 +17,8 @@ DEPENDS += "discrete-in"
 DEPENDS += "optic-control"
 
 SRC_URI = "file://bit_manager.c \
-           file://bit_manager.h"
+           file://bit_manager.h \
+           file://mii.h"
 
 S = "${WORKDIR}"
 

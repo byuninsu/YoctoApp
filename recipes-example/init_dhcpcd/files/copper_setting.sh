@@ -1,5 +1,3 @@
-#!/bin/bash
-
 # Check if the interface name is provided as an argument
 if [ -z "$1" ]; then
     echo "Usage: $0 <interface>"

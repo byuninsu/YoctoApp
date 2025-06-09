@@ -29,8 +29,8 @@ do_install() {
     install -m 0755 ${WORKDIR}/port6.sh ${D}${bindir}/port6.sh
     install -m 0755 ${WORKDIR}/port9.sh ${D}${bindir}/port9.sh
     install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/port10.sh
-    install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/enable_port.sh
-    install -m 0755 ${WORKDIR}/port10.sh ${D}${bindir}/copper_setting.sh
+    install -m 0755 ${WORKDIR}/enable_port.sh ${D}${bindir}/enable_port.sh
+    install -m 0755 ${WORKDIR}/copper_setting.sh ${D}${bindir}/copper_setting.sh
 }
 
 RDEPENDS_${PN} += "dhcpcd"

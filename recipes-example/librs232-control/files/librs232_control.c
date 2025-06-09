@@ -1,5 +1,6 @@
 #include "librs232_control.h"
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 
 #define SERIAL_DEVICE "3100000.serial"
@@ -28,5 +29,15 @@ uint8_t DeactivateRS232(void) {
     } else {
         printf("UART disabled successfully.\n");
         return RS232_SUCCESS;
+    }
+}
+
+int isRS232Available(void) {
+    if (access("/dev/ttyTHS0", F_OK) == 0) {
+        // 디바이스 파일이 존재함
+        return 0;
+    } else {
+        // 존재하지 않음
+        return 1;
     }
 }

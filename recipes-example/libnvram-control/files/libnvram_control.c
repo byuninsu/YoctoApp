@@ -157,9 +157,9 @@ uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
         return 1;
     }
 
-    for (int i = 0; i < sizeof(tx_buf); i++) {
-        printf("write wren tx_buf[%d] = 0x%02X\n", i, tx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(tx_buf); i++) {
+    //     printf("write wren tx_buf[%d] = 0x%02X\n", i, tx_buf[i]);
+    // }
 
     // 쓰기 명령 전송
     tx_command_buf[0] = NVRAM_SPI_CMD_WRITE;
@@ -254,7 +254,7 @@ uint32_t ReadNVRAM4ByteValue(uint32_t address) {
         }
 
 
-        printf("ReadNVRAM4ByteValue rx_buf = 0x%02X\n", rx_buf[0]);
+        //printf("ReadNVRAM4ByteValue rx_buf = 0x%02X\n", rx_buf[0]);
     
 
         // 수신된 데이터 처리 (1바이트 읽음)
@@ -268,7 +268,7 @@ uint32_t ReadNVRAM4ByteValue(uint32_t address) {
 }
 
 uint32_t WriteNVRAM4ByteValue(uint32_t address, uint32_t value) {
-    printf("WriteNVRAM4ByteValue input value = 0x%08x at ADdr = 0x%08x\n", value, address);
+    //printf("WriteNVRAM4ByteValue input value = 0x%08x at ADdr = 0x%08x\n", value, address);
 
     uint8_t tx_buf[1];
     uint8_t tx_command_buf[5];
@@ -469,13 +469,13 @@ uint32_t  ReadCumulativeTime(void) {
 }
 
 uint32_t  WriteBitResult(uint32_t address, uint32_t bitResult) {
-    printf("WriteBitResult input address = 0x%08x bitResult = 0x%08x\n", address, bitResult);
+    //printf("WriteBitResult input address = 0x%08x bitResult = 0x%08x\n", address, bitResult);
     switch (address) {
         case 2 :
             printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON \n");
             return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON, bitResult);
         case 3 :
-            printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS \n");
+            //printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS \n");
             return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS, bitResult);
         case 4 :
             printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED \n");
@@ -620,6 +620,35 @@ uint32_t WriteHwCompatInfoToNVRAM(const struct hwCompatInfo *info) {
     return result;
 }
 
+uint32_t WriteSerialInfoToNVRAM(int index, const char *value)
+{
+    uint32_t baseAddr = 0;
+    size_t maxLen = 15; 
+
+    switch (index) {
+        case 1: baseAddr = NVRAM_SUPPLIER_PART_NO; break;
+        case 2: baseAddr = NVRAM_SSD0_MODEL_NO;    break;
+        case 3: baseAddr = NVRAM_SSD0_SERIAL_NO;   break;
+        case 4: baseAddr = NVRAM_SSD1_MODEL_NO;    break;
+        case 5: baseAddr = NVRAM_SSD1_SERIAL_NO;   break;
+        case 6: baseAddr = NVRAM_SW_PART_NO;       break;
+        case 7: baseAddr = NVRAM_SW_SERIAL_NO;     break;
+        default:
+            return STATUS_ERROR;
+    }
+
+    uint32_t result = 0;
+    size_t i;
+    for (i = 0; i < maxLen && value[i] != '\0'; i++) {
+        result |= WriteNVRAMValue(baseAddr + i, value[i]);
+    }
+
+    // null 문자 추가
+    result |= WriteNVRAMValue(baseAddr + i, '\0');
+
+    return result;
+}
+
 
 // NVRAM에서 구조체 데이터를 읽어오는 함수 (널문자 명확히 처리)
 uint32_t ReadHwCompatInfoFromNVRAM(struct hwCompatInfo *info) {
@@ -678,7 +707,6 @@ uint32_t ReadQtTestValueFromNVRAM(char *outBuffer) {
     // 20바이트를 넘도록 \0을 못 찾았으면 잘못된 값 → 에러
     return 2;
 }
-
 
 
 

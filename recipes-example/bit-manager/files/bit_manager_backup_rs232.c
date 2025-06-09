@@ -26,10 +26,6 @@
 #include "discrete_in.h"
 #include "optic_control.h"
 
-#include <net/if.h>
-#include <linux/sockios.h>
-#include "mii.h"
-
 #define LOG_FILE_DIR "/mnt/dataSSD/"
 #define LOG_FILE_NAME "BitErrorLog.json"
 #define LOG_BUFFER_SIZE 4096
@@ -45,56 +41,52 @@ uint32_t powerOnBitResult = 0;
 uint32_t ContinuousBitResult = 0; 
 uint32_t initiatedBitResult = 0; 
 
+static int fd_rs232 = -1;
+int is_initialized = 0;
+pthread_mutex_t rs232_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-int mdio_read_internal(int skfd, const char *ifname, int phy_addr, int page, int location) {
-    struct ifreq ifr;
-    struct mii_data *mii = (struct mii_data *)&ifr.ifr_data;
-
-    memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
-
-    // 페이지 설정 (페이지 레지스터 0x16 / 22번)
-    if (page >= 0) {
-        mii->phy_id = phy_addr;
-        mii->reg_num = 22;
-        mii->val_in = page;
-        if (ioctl(skfd, SIOCSMIIREG, &ifr) < 0) {
-            fprintf(stderr, "Page set (reg 22) failed: %s\n", strerror(errno));
-            return -1;
-        }
+// 종료 시 자동으로 호출될 함수
+void closeRS232() {
+    pthread_mutex_lock(&rs232_mutex);
+    if (fd_rs232 >= 0) {
+        close(fd_rs232);
+        fd_rs232 = -1;
+        printf("[RS232] Closed.\n");
     }
-
-    // 원하는 레지스터 읽기
-    mii->phy_id = phy_addr;
-    mii->reg_num = location;
-    if (ioctl(skfd, SIOCGMIIREG, &ifr) < 0) {
-        fprintf(stderr, "Read failed: %s\n", strerror(errno));
-        return -1;
-    }
-
-    return mii->val_out;
+    pthread_mutex_unlock(&rs232_mutex);
 }
 
-void sendRS232Message(const char* message) {
-    if(isRS232Available()) return;
-    if (!message) return;
+// 시그널 핸들러 등록 (처음 한 번만)
+static void registerSignalHandler() {
+    static int signal_handler_registered = 0;
+    if (signal_handler_registered) return;
 
-    int fd = open("/dev/ttyTHS0", O_RDWR | O_NOCTTY);
-    if (fd == -1) {
-        perror("[RS232] Failed to open");
-        return;
+    signal(SIGINT, closeRS232);
+    signal(SIGTERM, closeRS232);
+    atexit(closeRS232);  // 정상 종료 시에도 호출되게 등록
+
+    signal_handler_registered = 1;
+}
+
+static int initRS232() {
+    if (is_initialized) return 0;
+
+    fd_rs232 = open("/dev/ttyTHS0", O_RDWR | O_NOCTTY);
+    if (fd_rs232 == -1) {
+        perror("Error opening /dev/ttyTHS0");
+        return -1;
     }
 
     struct termios tty;
     memset(&tty, 0, sizeof tty);
 
-    if (tcgetattr(fd, &tty) != 0) {
-        perror("[RS232] Failed to get attributes");
-        close(fd);
-        return;
+    if (tcgetattr(fd_rs232, &tty) != 0) {
+        perror("Error getting tty attributes");
+        closeRS232();
+        return -1;
     }
 
-    // 기본 설정 (115200 8N1)
+    // 기본 시리얼 포맷 설정 (8N1, 115200bps)
     tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
     tty.c_iflag &= ~IGNBRK;
     tty.c_lflag = 0;
@@ -110,16 +102,44 @@ void sendRS232Message(const char* message) {
     cfsetospeed(&tty, B115200);
     cfsetispeed(&tty, B115200);
 
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-        perror("[RS232] Failed to set attributes");
-        close(fd);
+    if (tcsetattr(fd_rs232, TCSANOW, &tty) != 0) {
+        perror("Error setting tty attributes");
+        closeRS232();
+        return -1;
+    }
+
+    is_initialized = 1;
+    registerSignalHandler();
+
+    printf("[RS232] Initialized /dev/ttyTHS0 (115200 8N1)\n");
+    return 0;
+}
+
+void sendRS232Message(const char* message) {
+    if (!message) return;
+
+    pthread_mutex_lock(&rs232_mutex);
+
+    if (initRS232() != 0) {
+        pthread_mutex_unlock(&rs232_mutex);
         return;
     }
 
-    write(fd, message, strlen(message));
-    write(fd, "\r\n", 2);
-    tcdrain(fd);     
-    close(fd);
+    ssize_t written = write(fd_rs232, message, strlen(message));
+    tcdrain(fd_rs232); 
+
+    usleep(10000);  
+    
+    if (written < 0) {
+        perror("[RS232] Failed to write message");
+        fprintf(stderr, "errno = %d (%s)\n", errno, strerror(errno));
+
+        close(fd_rs232);
+        fd_rs232 = -1;
+        is_initialized = 0;
+    }
+
+    pthread_mutex_unlock(&rs232_mutex);
 }
 
 // 고정된 하드웨어 정보
@@ -291,7 +311,7 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     }
 
     // Write mtype and timestamp
-    fprintf(logFile, ",\"mtype\":%u,\"timestamp\":\"%s\"}\n\n", mtype, timestamp);
+    fprintf(logFile, ",\"mtype\":%u,\"timestamp\":\"%s\"}\n", mtype, timestamp);
 
     // 캐시 플러시 및 디스크 동기화
     fflush(logFile);  // 캐시 플러시
@@ -488,7 +508,7 @@ uint8_t initializeDataSSD(void) {
 
 
 int check_gpio_expander() {
-    //printf("\n\nStart GPIO Expander Test ......\n");
+    printf("\n\nStart GPIO Expander Test ......\n");
     int status;
     uint8_t readConfValue0 = 0;
     uint8_t writeValue = 1;
@@ -508,7 +528,7 @@ int check_gpio_expander() {
     } 
 
     if(readConfValue0 == writeValue  ) {
-        //printf(" GPIO Expander test passed.");
+        printf(" GPIO Expander test passed.");
     }
     
     setDiscreteInput(0, 0);
@@ -516,7 +536,7 @@ int check_gpio_expander() {
 }
 
 int check_discrete_out() {
-    //printf("\n\nStart discrete_out Test ......\n");
+    printf("\n\nStart discrete_out Test ......\n");
     int status;
     uint8_t readConfValue0 = 0;
     uint8_t writeValue = 1;
@@ -536,7 +556,7 @@ int check_discrete_out() {
     } 
 
     if(readConfValue0 == writeValue  ) {
-        //printf(" GPIO Expander test passed.");
+        printf(" GPIO Expander test passed.");
     }
     
     setDiscreteInput(0, 0);
@@ -551,7 +571,7 @@ int checkDiscrete_in() {
     uint8_t resetValue = 0x00;  // 값 복구
     uint8_t readSenseValue = 0;
 
-    //printf("\n\nStart Discrete In Test ......\n");
+    printf("\n\nStart Discrete In Test ......\n");
 
     // SENSE 모드로 값 1을 쓰는 명령어 실행
 
@@ -565,7 +585,7 @@ int checkDiscrete_in() {
     } 
 
     if(writeValue == readSenseValue) {
-        //printf("Discrete_in test passed. Value is 0x%02X", readSenseValue);
+        printf("Discrete_in test passed. Value is 0x%02X", readSenseValue);
         return 0;  // 값이 일치하면 0 리턴
     }
 
@@ -579,10 +599,12 @@ int checkDiscrete_in() {
 int checkEthernet() {
     int sock;
     struct ifreq ifr;
-    struct ethtool_value edata;
     char* iface;
 
-    //printf("\n\nStart Ethernet Link Test ......\n");
+    char mac_addr[18];
+    struct ethtool_value edata;
+
+    printf("\n\nStart Ehternet Test ......\n");
 
     iface = checkEthernetInterface();
 
@@ -592,30 +614,51 @@ int checkEthernet() {
         return -1;
     }
 
-    memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
 
-    // ethtool을 사용하여 링크 상태 확인
-    edata.cmd = ETHTOOL_GLINK;
-    ifr.ifr_data = (caddr_t)&edata;
-
-    if (ioctl(sock, SIOCETHTOOL, &ifr) == -1) {
-        perror("ioctl SIOCETHTOOL");
+    // MAC 주소 가져오기
+    if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
+        perror("ioctl SIOCGIFHWADDR");
         close(sock);
         return -1;
     }
 
-    if (edata.data) {
-        //printf("Link detected on %s\n", iface);
-        close(sock);
-        return 0; // 링크 감지됨, 정상
-    } else {
-        printf("No link detected on %s\n", iface);
-        close(sock);
-        return 1; // 링크 없음, 비정상
-    }
-}
+    // MAC 주소를 문자열로 변환
+    snprintf(mac_addr, sizeof(mac_addr), "%02x:%02x:%02x:%02x:%02x:%02x",
+                (unsigned char)ifr.ifr_hwaddr.sa_data[0],
+                (unsigned char)ifr.ifr_hwaddr.sa_data[1],
+                (unsigned char)ifr.ifr_hwaddr.sa_data[2],
+                (unsigned char)ifr.ifr_hwaddr.sa_data[3],
+                (unsigned char)ifr.ifr_hwaddr.sa_data[4],
+                (unsigned char)ifr.ifr_hwaddr.sa_data[5]);
 
+    // MAC 주소의 첫 바이트가 48(0x30)로 시작하는지 확인
+    if ((unsigned char)ifr.ifr_hwaddr.sa_data[0] == 0x48) {
+        printf("Interface %s has a MAC address starting with 48: %s\n", iface, mac_addr);
+
+        // ethtool을 사용하여 링크 상태 확인
+        edata.cmd = ETHTOOL_GLINK;
+        ifr.ifr_data = (caddr_t)&edata;
+
+        if (ioctl(sock, SIOCETHTOOL, &ifr) == -1) {
+            perror("ioctl SIOCETHTOOL");
+            close(sock);
+            return -1;
+        }
+
+        // edata.data가 1이면 링크가 감지됨
+        if (edata.data) {
+            printf("Link detected on %s", iface);
+            close(sock);
+            return 0; // 링크 감지됨, 정상 작동
+        } else {
+            printf("No link detected on %s", iface);
+        }
+    }
+    
+    close(sock);
+    return 1; // 링크 감지되지 않음, 비정상 작동
+}
 
 int checkGPU() {
     // 'deviceQuery' 프로그램의 절대 경로 지정
@@ -655,7 +698,7 @@ int checkNvram() {
     char buffer[512];
     uint32_t readValue = 1;
 
-    //printf("\n\nStart NVRAM Test ......\n");
+    printf("\n\nStart NVRAM Test ......\n");
 
     // NVRAM에 값을 쓰는 명령어 실행
 
@@ -672,7 +715,7 @@ int checkNvram() {
     } 
 
     if (readValue == writeValue) {
-       // printf("NVRAM test passed.");
+        printf("NVRAM test passed.");
         return 0;  // 값이 일치하면 0 리턴
     } else {
         printf("NVRAM test failed: read 0x%x, expected 0x%x.", readValue, writeValue);
@@ -684,42 +727,48 @@ int checkNvram() {
 int checkRs232() {
     char buffer[512];
 
-    //printf("\n\nStart RS232 Test ......\n");
+    printf("\n\nStart RS232 Test ......\n");
 
-    if(isRS232Available() == 0){
-        //printf("RS232 check passed.");
-        return 0;
+    if(DeactivateRS232() == 0){
+        if(ActivateRS232() == 0){
+            printf("RS232 check passed.");
+            return 0;
+        } 
     }
     return 1;
 }
 
 int checkEthernetSwitch() {
-    int skfd = -1;
-    int result;
-    char *iface = checkEthernetInterface(); // 예: "eth0"
+    char command[512];
+    char output[128];
+    char* iface = NULL;
+    FILE *fp;
+    uint32_t result = 0;
 
-    if (!iface || iface[0] == '\0') {
+    printf("\n\nStart Ethernet Switch Test ......\n");
+
+    iface = checkEthernetInterface();  // 이 함수가 "eth0" 또는 "eth1" 같은 문자열 리턴한다고 가정
+    if (iface == NULL || iface[0] == '\0') {
         fprintf(stderr, "No valid Ethernet interface found\n");
         return -1;
     }
 
-    skfd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (skfd < 0) {
-        perror("socket");
+    snprintf(command, sizeof(command),
+             "mdio-tool read %s 0x02 0x03", iface);
+
+    fp = popen(command, "r");
+    if (fp == NULL) {
+        perror("Failed to run mdio-tool command");
         return -1;
     }
 
-    // phy_addr = 0x02, reg = 0x03, page = -1 (기본 페이지)
-    result = mdio_read_internal(skfd, iface, 0x02, -1, 0x03);
-    close(skfd);
-
-    if (result < 0) {
-        fprintf(stderr, "Failed to read from Ethernet switch\n");
-        return -1;
+    if (fgets(output, sizeof(output), fp) != NULL) {
+        sscanf(output, "%x", &result);
     }
+    pclose(fp);
 
     if (result == 0x0a11) {
-        //printf("Ethernet switch test passed (Product ID: 0x%04x)\n", result);
+        printf("Ethernet switch test passed (Product ID: 0x%04x)\n", result);
         return 0;
     } else {
         printf("Ethernet switch test failed (Read: 0x%04x)\n", result);
@@ -1064,10 +1113,10 @@ void RequestBit(uint32_t mtype) {
     // 성공/실패 출력
     if (bitStatus & 0x7FFFFFFF) {
         printf("\n[ PBIT FAIL ]  \n");
-        snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT FAIL ] ");
+        snprintf(rs232Result, sizeof(rs232Result), "\n     [PBIT FAIL] ");
     } else {
         printf("\n[ PBIT SUCCESS] \n");
-        snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT SUCCESS ] ");
+        snprintf(rs232Result, sizeof(rs232Result), "\n     [PBIT SUCCESS] ");
     }
 
     sendRS232Message(rs232Result); //Rs232 전송
@@ -1078,7 +1127,7 @@ void RequestCBIT(uint32_t mtype) {
     char rs232Result[128] = {0};
 
     // DEBUG: 초기화 메시지 출력
-    //printf("\n\nStarting RequestCBIT function, mtype = 0x%08X\n", mtype);
+    printf("\n\nStarting RequestCBIT function, mtype = 0x%08X\n", mtype);
 
     // CBIT 항목 상태 체크
     bitStatus |= ((check_gpio_expander()    != 0) << 0);   // GPIO Expander 상태
@@ -1093,18 +1142,18 @@ void RequestCBIT(uint32_t mtype) {
     bitStatus |= (1 << 31);
 
     // 결과 출력
-    // printf("\n     [ CBIT Test Results ]\n");
-    // printf("%-20s : %u\n", "GPIO Expander",     (bitStatus >> 0)  & 1);
-    // printf("%-20s : %u\n", "Ethernet PHY",      (bitStatus >> 1)  & 1);
-    // printf("%-20s : %u\n", "NVRAM",             (bitStatus >> 2)  & 1);
-    // printf("%-20s : %u\n", "Discrete In",       (bitStatus >> 3)  & 1);
-    // printf("%-20s : %u\n", "Discrete Out",      (bitStatus >> 4)  & 1);
-    // printf("%-20s : %u\n", "RS232",             (bitStatus >> 5)  & 1);
-    // printf("%-20s : %u\n", "Ethernet Switch",   (bitStatus >> 6)  & 1);
+    printf("\n     [ CBIT Test Results ]\n");
+    printf("%-20s : %u\n", "GPIO Expander",     (bitStatus >> 0)  & 1);
+    printf("%-20s : %u\n", "Ethernet PHY",      (bitStatus >> 1)  & 1);
+    printf("%-20s : %u\n", "NVRAM",             (bitStatus >> 2)  & 1);
+    printf("%-20s : %u\n", "Discrete In",       (bitStatus >> 3)  & 1);
+    printf("%-20s : %u\n", "Discrete Out",      (bitStatus >> 4)  & 1);
+    printf("%-20s : %u\n", "RS232",             (bitStatus >> 5)  & 1);
+    printf("%-20s : %u\n", "Ethernet Switch",   (bitStatus >> 6)  & 1);
 
     // 에러 비트 확인
     if (bitStatus & 0x7FFFFFFF) {
-        //printf("CBIT error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
+        printf("CBIT error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
         WriteBitErrorData(bitStatus, mtype);
     }
 
@@ -1113,10 +1162,10 @@ void RequestCBIT(uint32_t mtype) {
 
     // 성공/실패 출력
     if (bitStatus & 0x7FFFFFFF) {
-        //printf("\n[CBIT FAIL ]   \n");
+        printf("\n[CBIT FAIL ]   \n");
         snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT FAIL] ");
     } else {
-        //printf("\n[CBIT SUCCESS] \n");
+        printf("\n[CBIT SUCCESS] \n");
         snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT SUCCESS] ");
     }
 }

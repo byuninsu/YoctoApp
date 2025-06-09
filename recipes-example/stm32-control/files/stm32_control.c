@@ -13,6 +13,9 @@ static uint32_t speed = 1000000;
 static uint8_t bits = 8;
 static uint8_t mode = 0;
 static int fd;
+static uint8_t startBit = 0xAA;
+static uint8_t lasttBit = 0xBB;
+
 
 int spiInit(void) {
 
@@ -59,7 +62,7 @@ float sendCommand(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[4] = { command, 0x00, 0x00, 0x00 };
+    uint8_t tx_buf[6] = {startBit, command, 0x00, 0x00, 0x00,lasttBit};
 	uint8_t tx_buf2[4] = { 0xFF,0xFF,0xFF,0xFF };
     uint8_t spi_rx_buf[4] = { 0 }; 
     float data;
@@ -96,11 +99,11 @@ float sendCommand(stm32_spi_reg command) {
     }
 
     //rx_buf 내용 출력
-    for (int i = 0; i < sizeof(spi_rx_buf); i++) {
-        printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(spi_rx_buf); i++) {
+    //     printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
+    // }
 
-    //memcpy(&data, spi_rx_buf, sizeof(data));
+    memcpy(&data, spi_rx_buf, sizeof(data));
 
     // 바이트 배열을 float로 변환
     data = *(float*)spi_rx_buf;
@@ -117,7 +120,7 @@ uint8_t sendOnlyOne(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[4] = { command, 0x00, 0x00, 0x00 };
+    uint8_t tx_buf[6] = {startBit, command, 0x00, 0x00, 0x00, lasttBit };
     float data;
 
     struct spi_ioc_transfer xfer[1] = {
@@ -147,7 +150,7 @@ void sendBootCondition(void) {
 
     spiInit();
 
-    uint8_t tx_buf[4] = { STM32_SPI_BOOTCONDITION, 0x00, 0x00, 0x00 };
+    uint8_t tx_buf[6] = { startBit, STM32_SPI_BOOTCONDITION, 0x00, 0x00, 0x00, lasttBit };
 	uint8_t tx_buf2[1] = { 0xFF };
     uint8_t spi_rx_buf[1] = { 0 }; 
 
@@ -181,7 +184,7 @@ void sendBootCondition(void) {
     }
 
     //rx_buf 내용 출력
-    printf("rx_buf[0]: %02X\n", spi_rx_buf[0]);
+    //printf("rx_buf[0]: %02X\n", spi_rx_buf[0]);
 
     //MCU로 인한 재부팅처리 NVRAM에 기록
     if(spi_rx_buf[0] == 0x03){
@@ -203,7 +206,7 @@ uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
 
     spiInit();
 
-    uint8_t tx_buf[4] = { command, timeout, 0x00, 0x00 };
+    uint8_t tx_buf[6] = {startBit, command, timeout, 0x00, 0x00, lasttBit };
 
     struct spi_ioc_transfer xfer = {
         .tx_buf = (uintptr_t)tx_buf,
@@ -219,7 +222,7 @@ uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
         return 1;
     }
 
-    printf("sendSetTimeout Command : %x Timeout : %x\n", tx_buf[0], tx_buf[1]);
+    //printf("sendSetTimeout Command : %x Timeout : %x\n", tx_buf[0], tx_buf[1]);
 
     if (fd != -1) {
         close(fd);
@@ -233,7 +236,7 @@ uint8_t sendCommandForResponseOneByte(stm32_spi_reg command) {
 
     spiInit();
 
-    uint8_t tx_buf[4] = { command, 0x00, 0x00, 0x00 };
+    uint8_t tx_buf[6] = { startBit, command, 0x00, 0x00, 0x00, lasttBit };
 	uint8_t tx_buf2[2] = { 0xFF, 0xFF };
     uint8_t spi_rx_buf[1] = { 0 }; 
     float data;
@@ -270,9 +273,9 @@ uint8_t sendCommandForResponseOneByte(stm32_spi_reg command) {
     }
 
     //rx_buf 내용 출력
-    for (int i = 0; i < sizeof(spi_rx_buf); i++) {
-        printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(spi_rx_buf); i++) {
+    //     printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
+    // }
 
     if (fd != -1) {
         close(fd);   
@@ -286,10 +289,10 @@ uint8_t sendFourByte(stm32_spi_reg command, uint8_t firstVaule, uint8_t secondVa
 
     spiInit();
 
-    uint8_t tx_buf[4] = { command, firstVaule, secondVaule, thirdVaule };
+    uint8_t tx_buf[6] = {startBit, command, firstVaule, secondVaule, thirdVaule, lasttBit};
 
-    printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
-        tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
+//    /printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
+//         tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
 
     struct spi_ioc_transfer xfer[1] = {
         {
@@ -318,12 +321,12 @@ uint8_t sendFourByteForResponse(stm32_spi_reg command, uint8_t firstVaule) {
 
     spiInit();
 
-    uint8_t tx_buf[4] = { command, firstVaule, 0x00, 0x00 };
+    uint8_t tx_buf[6] = {startBit, command, firstVaule, 0x00, 0x00, lasttBit };
 	uint8_t tx_buf2[2] = { 0xFF, 0xFF };
     uint8_t spi_rx_buf[1] = { 0 }; 
 
-    printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
-        tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
+    // printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
+    //     tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
 
     struct spi_ioc_transfer xfer[2] = {
         {
@@ -357,9 +360,9 @@ uint8_t sendFourByteForResponse(stm32_spi_reg command, uint8_t firstVaule) {
     }
 
     //rx_buf 내용 출력
-    for (int i = 0; i < sizeof(spi_rx_buf); i++) {
-        printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(spi_rx_buf); i++) {
+    //     printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
+    // }
 
     if (fd != -1) {
         close(fd);   
@@ -437,7 +440,6 @@ uint8_t sendConfSetLedState(uint8_t gpio, uint8_t value){
 uint8_t sendConfGetLedState(uint8_t gpio){
     return sendFourByteForResponse(STM32_SPI_SEND_LED_CONF_GET_VALUE, gpio);
 }
-
 
 
 

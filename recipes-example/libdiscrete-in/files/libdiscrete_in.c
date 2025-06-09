@@ -76,72 +76,27 @@ uint32_t discreteSpiInit(void) {
         return 1;
     }
 
-    printf("spi mode: 0x%x\n", mode);
-    printf("spi bits per word: %d\n", bits);
-    printf("spi max speed: %d Hz (%d KHz)\n", speed, speed/1000);
+    // printf("spi mode: 0x%x\n", mode);
+    // printf("spi bits per word: %d\n", bits);
+    // printf("spi max speed: %d Hz (%d KHz)\n", speed, speed/1000);
 
     return 0; // 초기화 성공
 }
 
-uint32_t GetDiscreteState(void) {
-    uint8_t tx_buf1[1];
-    uint8_t tx_buf2[4] = { 0xFF }; // 더미 데이터 전송 버퍼
-    uint8_t rx_buf[4] = { 0 };     // 데이터 수신 버퍼
-    uint32_t discrete_state = 0;
-
-    discreteSpiInit(); // SPI 초기화 함수 호출
-
-    // SENSE<31:0> 읽기
-    tx_buf1[0] = HOLT_READ_ALL; // 0xF8 명령어
-    struct spi_ioc_transfer getDiscreteXfer[2] = {
-        {
-            .tx_buf = (uintptr_t)tx_buf1,
-            .rx_buf = 0,
-            .len = sizeof(tx_buf1),
-            .delay_usecs = 0,
-            .speed_hz = speed,
-            .bits_per_word = bits
-        },
-        {
-            .tx_buf = (uintptr_t)tx_buf2,
-            .rx_buf = (uintptr_t)rx_buf,
-            .len = sizeof(tx_buf2),
-            .delay_usecs = 0,
-            .speed_hz = speed,
-            .bits_per_word = bits
-        }
-    };
-
-    // SPI 통신 에러 처리
-    if (ioctl(fd, SPI_IOC_MESSAGE(2), getDiscreteXfer) < 0) {
-        perror("Failed to write/read SPI");
-        close(fd);
-        return 0xFFFFFFFF; // 에러 발생 시 특정 값을 반환
-    }
-
-    // 전송 버퍼 및 수신 버퍼 출력
-    for (int i = 0; i < sizeof(tx_buf1); i++) {
-        printf("GetDiscreteState tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
-    }
-
-    for (int i = 0; i < sizeof(rx_buf); i++) {
-        printf("GetDiscreteState rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    }
-
-    // SPI 디바이스 닫기
-    close(fd);
-
-    // 수신된 데이터 처리
-    discrete_state = (rx_buf[0] << 24) | (rx_buf[1] << 16) | (rx_buf[2] << 8) | rx_buf[3];
-
-    return discrete_state;
+// 8비트 비트 순서를 반전하는 함수
+uint8_t reverse_bits(uint8_t b) {
+    b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
+    b = (b & 0xCC) >> 2 | (b & 0x33) << 2;
+    b = (b & 0xAA) >> 1 | (b & 0x55) << 1;
+    return b;
 }
 
-uint32_t GetDiscreteState7to0(void) {
+
+uint8_t GetDiscreteState7to0(void) {
     uint8_t tx_buf1[1];
     uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
     uint8_t rx_buf[1] = { 0 }; // 데이터 수신 버퍼
-    uint32_t discrete_state = 0;
+    uint8_t discrete_state = 0;
 
     discreteSpiInit(); // SPI 초기화 함수 호출
 
@@ -171,15 +126,15 @@ uint32_t GetDiscreteState7to0(void) {
         close(fd);
         return 1;
     }
-    discrete_state = rx_buf[0];
+    discrete_state = reverse_bits(rx_buf[0]);
 
-    for (int i = 0; i < sizeof(tx_buf1); i++) {
-        printf("GetDiscreteState7to0 tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
-    }
+    // for (int i = 0; i < sizeof(tx_buf1); i++) {
+    //     printf("GetDiscreteState7to0 tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
+    // }
 
-    for (int i = 0; i < sizeof(rx_buf); i++) {
-        printf("GetDiscreteState7to0 rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(rx_buf); i++) {
+    //     printf("GetDiscreteState7to0 rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
+    // }
 
     // SPI 디바이스 닫기
     close(fd);
@@ -187,11 +142,11 @@ uint32_t GetDiscreteState7to0(void) {
     return discrete_state;
 }
 
-uint32_t GetDiscreteState15to8(void) {
+uint8_t GetDiscreteState15to8(void) {
     uint8_t tx_buf1[1];
     uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
     uint8_t rx_buf[1] = { 0 }; // 데이터 수신 버퍼
-    uint32_t discrete_state = 0;
+    uint8_t discrete_state = 0;
 
     discreteSpiInit(); // SPI 초기화 함수 호출
 
@@ -221,21 +176,34 @@ uint32_t GetDiscreteState15to8(void) {
         close(fd);
         return 1;
     }
-    discrete_state = rx_buf[0];
+    discrete_state = reverse_bits(rx_buf[0]);
 
-    for (int i = 0; i < sizeof(tx_buf1); i++) {
-        printf("GetDiscreteState15to8 tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
-    }
+    // for (int i = 0; i < sizeof(tx_buf1); i++) {
+    //     printf("GetDiscreteState15to8 tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
+    // }
 
-    for (int i = 0; i < sizeof(rx_buf); i++) {
-        printf("GetDiscreteState15to8 rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(rx_buf); i++) {
+    //     printf("GetDiscreteState15to8 rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
+    // }
 
 
     // SPI 디바이스 닫기
     close(fd);
 
     return discrete_state;
+}
+
+uint16_t GetDiscreteState(void) {
+    //printf("GetDiscreteState ++ \n");
+
+    uint16_t result = 0;
+
+    uint8_t firstByte =  GetDiscreteState7to0();
+    uint8_t secondByte =  GetDiscreteState15to8();
+
+    result = (firstByte << 8) | secondByte;
+
+    return result;
 }
 
 uint8_t ReadProgramSenseBanks(void) {
@@ -273,13 +241,13 @@ uint8_t ReadProgramSenseBanks(void) {
 
     discrete_state = rx_buf[0];
 
-    for (int i = 0; i < sizeof(tx_buf1); i++) {
-        printf("ReadProgramSenseBanks tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
-    }
+    // for (int i = 0; i < sizeof(tx_buf1); i++) {
+    //     printf("ReadProgramSenseBanks tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
+    // }
 
-    for (int i = 0; i < sizeof(rx_buf); i++) {
-        printf("ReadProgramSenseBanks rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(rx_buf); i++) {
+    //     printf("ReadProgramSenseBanks rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
+    // }
 
     // SPI 디바이스 닫기
     close(fd);
@@ -290,7 +258,7 @@ uint8_t ReadProgramSenseBanks(void) {
 void WriteProgramSenseBanks(uint8_t bank_settings) {
     uint8_t tx_buf[2];
 
-    printf("WriteProgramSenseBanks input Value : 0x%04X\n", bank_settings);
+    //printf("WriteProgramSenseBanks input Value : 0x%04X\n", bank_settings);
 
     discreteSpiInit(); // SPI 초기화 함수 호출
 
@@ -313,9 +281,9 @@ void WriteProgramSenseBanks(uint8_t bank_settings) {
         return;
     }
 
-    for (int i = 0; i < sizeof(tx_buf); i++) {
-        printf("WriteProgramSenseBanks tx_buf[%d] = 0x%02X\n", i, tx_buf[i]);
-    }
+    // for (int i = 0; i < sizeof(tx_buf); i++) {
+    //     printf("WriteProgramSenseBanks tx_buf[%d] = 0x%02X\n", i, tx_buf[i]);
+    // }
 
 
     // SPI 디바이스 닫기

@@ -6,8 +6,6 @@
 #include <sys/ioctl.h>
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
-#include <pthread.h>
-#include <signal.h>
 #include <string.h>
 #include "led_control.h"
 #include "stm32_control.h"
@@ -31,32 +29,18 @@ typedef enum {
 static const char* i2c_device_path_old = "/dev/i2c-1";
 static const char* i2c_device_path_qt = "/dev/i2c-2";
 
+static int i2c_fd = -1;
 static pthread_mutex_t i2c_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static void i2cClose() {
-    pthread_mutex_lock(&i2c_mutex);
-    if (i2c_fd >= 0) {
-        close(i2c_fd);
-        i2c_fd = -1;
-    }
-    pthread_mutex_unlock(&i2c_mutex);
-}
-
-static void registerSignalHandler() {
-    static int registered = 0;
-    if (registered) return;
-    atexit(i2cClose);
-    signal(SIGINT, i2cClose);
-    signal(SIGTERM, i2cClose);
-    registered = 1;
-}
-
 uint8_t i2cInit(uint8_t addr) {
+     pthread_mutex_lock(&i2c_mutex);
+
     // I2C 버스가 열려있지 않으면 열기
     if (i2c_fd < 0) {
         i2c_fd = open(i2c_device_path_old, O_RDWR);
         if (i2c_fd < 0) {
             perror("Failed to open I2C bus");
+            thread_mutex_unlock(&i2c_mutex);
             return 1;
         }
 
@@ -65,13 +49,21 @@ uint8_t i2cInit(uint8_t addr) {
             perror("Failed to select I2C device");
             close(i2c_fd);
             i2c_fd = -1;
+            thread_mutex_unlock(&i2c_mutex);
             return 1;
         }
     }
 
+    thread_mutex_unlock(&i2c_mutex);
     return 0;
 }
 
+void i2cClose() {
+    if (i2c_fd >= 0) {
+        close(i2c_fd);
+        i2c_fd = -1;  // 파일 디스크립터를 초기화하여 재사용 방지
+    }
+}
 
 // I2C 장치에서 바이트를 읽는 함수
 int i2c_read_byte(unsigned char reg, unsigned char *value) {
@@ -123,8 +115,6 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
     unsigned char new_value;
     unsigned char mask = 1 << (gpio % 8);
     uint8_t original_gpio = gpio;
-
-     pthread_mutex_lock(&i2c_mutex);
 
     i2cInit(DISCRETE_OUT_ADDR);
 
@@ -181,16 +171,13 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
 
     printf("Set GPIO %d to value %d\n", original_gpio, value);
 
-    pthread_mutex_unlock(&i2c_mutex);
-
+    i2cClose();
     return 0;
 }
 
 uint32_t setDiscreteOutAll(uint16_t value) {
     uint8_t port0_value = (uint8_t)(value & 0xFF);      // 하위 8비트는 Port 0에 할당
     uint8_t port1_value = (uint8_t)((value >> 8) & 0xFF); // 상위 8비트는 Port 1에 할당
-
-     pthread_mutex_lock(&i2c_mutex);
 
     // I2C 초기화
     i2cInit(DISCRETE_OUT_ADDR);
@@ -213,7 +200,8 @@ uint32_t setDiscreteOutAll(uint16_t value) {
 
     printf("Set GPIOs to value: 0x%04X\n", value);
 
-    pthread_mutex_unlock(&i2c_mutex);
+    // I2C 닫기
+    i2cClose();
 
     return 0;
 }
@@ -223,8 +211,6 @@ uint8_t getDiscreteOut(uint8_t gpio) {
     unsigned char mask = 1 << (gpio % 8);
     unsigned char reg = 0;
     unsigned char currentValue = 0;
-
-     pthread_mutex_lock(&i2c_mutex);
 
     // GPIO 범위 확인
     if (gpio >= 16) {
@@ -249,7 +235,7 @@ uint8_t getDiscreteOut(uint8_t gpio) {
 
     printf("Current GPIO state %d: %d\n", gpio, gpioState);
 
-    pthread_mutex_unlock(&i2c_mutex);
+    i2cClose();
 
     return gpioState;
 }
@@ -258,8 +244,6 @@ uint16_t getDiscreteOutAll(void) {
     uint16_t gpioState = 0;
     unsigned char reg0Value = 0;
     unsigned char reg1Value = 0;
-
-    pthread_mutex_lock(&i2c_mutex);
 
     // I2C 초기화
     i2cInit(DISCRETE_OUT_ADDR);
@@ -283,13 +267,12 @@ uint16_t getDiscreteOutAll(void) {
 
     printf("Current GPIO states: 0x%04X\n", gpioState);
 
-   pthread_mutex_unlock(&i2c_mutex);
+    i2cClose();
 
     return gpioState;
 }
 
 uint32_t setDiscreteConf(uint8_t port, uint8_t value) {
-    pthread_mutex_lock(&i2c_mutex);
 
     printf("setDiscreteConf inpu value : %d\n", value);
 
@@ -304,15 +287,12 @@ uint32_t setDiscreteConf(uint8_t port, uint8_t value) {
 
     printf("Set GPIO configuration for port %d to value 0x%02x\n", port, value);
 
-    pthread_mutex_unlock(&i2c_mutex);
+    i2cClose();
 
     return 0;
 }
 
 uint32_t getDiscreteConf(uint8_t port, uint8_t *value) {
-
-    pthread_mutex_lock(&i2c_mutex);
-
     // 포트 범위 확인
     if (port > 1) {
         fprintf(stderr, "Invalid port number: %d\n", port);
@@ -330,16 +310,14 @@ uint32_t getDiscreteConf(uint8_t port, uint8_t *value) {
 
     printf("Current configuration state %d: 0x%02x\n", port, *value);
 
-    pthread_mutex_unlock(&i2c_mutex);
+    i2cClose();
     
     return 0;
 }
 
 uint32_t setDiscreteInput(uint8_t port, uint8_t value) {
-    //printf("setDiscreteInput inpu value : %d\n", value);
+    printf("setDiscreteInput inpu value : %d\n", value);
     uint8_t reg = 0;
-
-    pthread_mutex_lock(&i2c_mutex);
 
     i2cInit(DISCRETE_OUT_ADDR);
 
@@ -354,17 +332,15 @@ uint32_t setDiscreteInput(uint8_t port, uint8_t value) {
         return 1;
     }
 
-    //printf("Set GPIO Input for port %d to value 0x%02x\n", port, value);
+    printf("Set GPIO Input for port %d to value 0x%02x\n", port, value);
 
-    pthread_mutex_unlock(&i2c_mutex);
+    i2cClose();
 
     return 0;
 }
 
 uint32_t getDiscreteInput(uint8_t port, uint8_t *value) {
     uint8_t reg = 0;
-
-    pthread_mutex_lock(&i2c_mutex);
 
     i2cInit(DISCRETE_OUT_ADDR);
 
@@ -379,9 +355,9 @@ uint32_t getDiscreteInput(uint8_t port, uint8_t *value) {
         return 1;
     }
 
-    //printf("Current Input state %d: 0x%02x\n", port, *value);
+    printf("Current Input state %d: 0x%02x\n", port, *value);
 
-    pthread_mutex_unlock(&i2c_mutex);
+    i2cClose();
     
     return 0;
 }

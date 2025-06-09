@@ -8,8 +8,12 @@
 #include <linux/sockios.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <termios.h>
 #include <linux/nvme_ioctl.h>
 #include <sys/mount.h>
+#include <errno.h>
+#include <pthread.h>
+#include <signal.h>
 #include "cJSON.h"
 #include "libbit_manager.h"
 #include "usb_control.h"
@@ -21,6 +25,10 @@
 #include "ethernet_control.h"
 #include "discrete_in.h"
 #include "optic_control.h"
+
+#include <net/if.h>
+#include <linux/sockios.h>
+#include "mii.h"
 
 #define LOG_FILE_DIR "/mnt/dataSSD/"
 #define LOG_FILE_NAME "BitErrorLog.json"
@@ -36,6 +44,83 @@ char iface[20] = {0};
 uint32_t powerOnBitResult = 0; 
 uint32_t ContinuousBitResult = 0; 
 uint32_t initiatedBitResult = 0; 
+
+
+int mdio_read_internal(int skfd, const char *ifname, int phy_addr, int page, int location) {
+    struct ifreq ifr;
+    struct mii_data *mii = (struct mii_data *)&ifr.ifr_data;
+
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+
+    // 페이지 설정 (페이지 레지스터 0x16 / 22번)
+    if (page >= 0) {
+        mii->phy_id = phy_addr;
+        mii->reg_num = 22;
+        mii->val_in = page;
+        if (ioctl(skfd, SIOCSMIIREG, &ifr) < 0) {
+            fprintf(stderr, "Page set (reg 22) failed: %s\n", strerror(errno));
+            return -1;
+        }
+    }
+
+    // 원하는 레지스터 읽기
+    mii->phy_id = phy_addr;
+    mii->reg_num = location;
+    if (ioctl(skfd, SIOCGMIIREG, &ifr) < 0) {
+        fprintf(stderr, "Read failed: %s\n", strerror(errno));
+        return -1;
+    }
+
+    return mii->val_out;
+}
+
+void sendRS232Message(const char* message) {
+    if(isRS232Available()) return;
+    if (!message) return;
+
+    int fd = open("/dev/ttyTHS0", O_RDWR | O_NOCTTY);
+    if (fd == -1) {
+        perror("[RS232] Failed to open");
+        return;
+    }
+
+    struct termios tty;
+    memset(&tty, 0, sizeof tty);
+
+    if (tcgetattr(fd, &tty) != 0) {
+        perror("[RS232] Failed to get attributes");
+        close(fd);
+        return;
+    }
+
+    // 기본 설정 (115200 8N1)
+    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
+    tty.c_iflag &= ~IGNBRK;
+    tty.c_lflag = 0;
+    tty.c_oflag = 0;
+    tty.c_cc[VMIN]  = 1;
+    tty.c_cc[VTIME] = 1;
+    tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+    tty.c_cflag |= (CLOCAL | CREAD);
+    tty.c_cflag &= ~(PARENB | PARODD);
+    tty.c_cflag &= ~CSTOPB;
+    tty.c_cflag &= ~CRTSCTS;
+
+    cfsetospeed(&tty, B115200);
+    cfsetispeed(&tty, B115200);
+
+    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+        perror("[RS232] Failed to set attributes");
+        close(fd);
+        return;
+    }
+
+    write(fd, message, strlen(message));
+    write(fd, "\r\n", 2);
+    tcdrain(fd);     
+    close(fd);
+}
 
 // 고정된 하드웨어 정보
 const struct hwCompatInfo myInfo = {
@@ -206,7 +291,7 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
     }
 
     // Write mtype and timestamp
-    fprintf(logFile, ",\"mtype\":%u,\"timestamp\":\"%s\"}\n", mtype, timestamp);
+    fprintf(logFile, ",\"mtype\":%u,\"timestamp\":\"%s\"}\n\n", mtype, timestamp);
 
     // 캐시 플러시 및 디스크 동기화
     fflush(logFile);  // 캐시 플러시
@@ -258,6 +343,8 @@ cJSON*  ReadBitErrorLog(void) {
 int check_ssd(const char *ssd_path) {
     int status;
 
+    printf("\n\nStart SSD Test ......\n");
+
     // 경로를 구성하여 마운트 경로로 변환
     char device_path[512];
 
@@ -303,7 +390,7 @@ int check_ssd(const char *ssd_path) {
         return 1;
     }
 
-    printf("SSD check on %s completed successfully.\n", device_path);
+    printf("SSD check on %s completed successfully.", device_path);
     return 0;
 }
 
@@ -392,7 +479,7 @@ uint8_t initializeDataSSD(void) {
     if (result == 0) {
         printf("SSD initialization completed successfully.\n");
     } else {
-        printf("SSD initialization failed.\n");
+        printf("SSD initialization failed.");
     }
 
     return result;
@@ -401,110 +488,58 @@ uint8_t initializeDataSSD(void) {
 
 
 int check_gpio_expander() {
+    //printf("\n\nStart GPIO Expander Test ......\n");
     int status;
     uint8_t readConfValue0 = 0;
-    uint8_t readConfValue1 = 0;
+    uint8_t writeValue = 1;
     uint32_t result = 0;
     char command[512];
 
-
-    // led-control Expander 0 setting
-
-    status = setDiscreteConf(0, 0x00);
+    status = setDiscreteInput(0, writeValue);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     }
 
-    status = setDiscreteConf(1, 0x00);
-    if (status != 0) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    }
-
-    result = getDiscreteConf(0, &readConfValue0);
+    result = getDiscreteInput(0, &readConfValue0);
     if (result == 1) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     } 
 
-    result = getDiscreteConf(1, &readConfValue1);
-    if (result == 1) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    } 
-
-    if(readConfValue0 == 0 && readConfValue1 == 0 ) {
-        printf(" GPIO Expander test passed.");
+    if(readConfValue0 == writeValue  ) {
+        //printf(" GPIO Expander test passed.");
     }
-
-    // Restore to original state after testing
-    status = setDiscreteConf(0, 0xFF);
-    if (status != 0) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    }
-
-    status = setDiscreteConf(1, 0xFF);
-    if (status != 0) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    }
-
+    
+    setDiscreteInput(0, 0);
     return 0;
 }
 
 int check_discrete_out() {
+    //printf("\n\nStart discrete_out Test ......\n");
     int status;
     uint8_t readConfValue0 = 0;
-    uint8_t readConfValue1 = 0;
+    uint8_t writeValue = 1;
     uint32_t result = 0;
     char command[512];
 
-
-    // led-control Expander 0 setting
-
-    status = setDiscreteConf(0, 0x00);
+    status = setDiscreteInput(0, writeValue);
     if (status != 0) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     }
 
-    status = setDiscreteConf(1, 0x00);
-    if (status != 0) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    }
-
-    result = getDiscreteConf(0, &readConfValue0);
+    result = getDiscreteInput(0, &readConfValue0);
     if (result == 1) {
         printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
         return 1;
     } 
 
-    result = getDiscreteConf(1, &readConfValue1);
-    if (result == 1) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    } 
-
-    if(readConfValue0 == 0 && readConfValue1 == 0 ) {
-        printf(" GPIO Expander test passed.");
+    if(readConfValue0 == writeValue  ) {
+        //printf(" GPIO Expander test passed.");
     }
-
-    // Restore to original state after testing
-    status = setDiscreteConf(0, 0xFF);
-    if (status != 0) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    }
-
-    status = setDiscreteConf(1, 0xFF);
-    if (status != 0) {
-        printf("Error: Failed to set configuration for GPIO Expander 0 using led-control.\n");
-        return 1;
-    }
-
+    
+    setDiscreteInput(0, 0);
     return 0;
 }
 
@@ -512,8 +547,11 @@ int checkDiscrete_in() {
     char writeCommand[512];
     char readCommand[512];
     char buffer[512];
-    uint8_t writeValue = 0x02;  // SENSE 모드에 쓸 값
+    uint8_t writeValue = 0x08;  // SENSE 모드에 쓸 값
+    uint8_t resetValue = 0x00;  // 값 복구
     uint8_t readSenseValue = 0;
+
+    //printf("\n\nStart Discrete In Test ......\n");
 
     // SENSE 모드로 값 1을 쓰는 명령어 실행
 
@@ -524,12 +562,14 @@ int checkDiscrete_in() {
     if(readSenseValue == 1){
         printf("Discrete_in test failed: could not read value.\n");
         return 1;
-    }
+    } 
 
     if(writeValue == readSenseValue) {
-        printf("Discrete_in test passed. Value is 0x%02X\n", readSenseValue);
+        //printf("Discrete_in test passed. Value is 0x%02X", readSenseValue);
         return 0;  // 값이 일치하면 0 리턴
     }
+
+    WriteProgramSenseBanks(resetValue);
 
     // 값을 찾지 못한 경우
     printf("Discrete_in test failed: not match writeValue, readSenseValue .\n");
@@ -539,9 +579,12 @@ int checkDiscrete_in() {
 int checkEthernet() {
     int sock;
     struct ifreq ifr;
-
-    char mac_addr[18];
     struct ethtool_value edata;
+    char* iface;
+
+    //printf("\n\nStart Ethernet Link Test ......\n");
+
+    iface = checkEthernetInterface();
 
     // 네트워크 인터페이스를 위한 소켓 생성
     if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
@@ -549,61 +592,38 @@ int checkEthernet() {
         return -1;
     }
 
-    // eth0과 eth1 인터페이스를 순차적으로 확인
-    for (int i = 0; i < 2; i++) {
-        snprintf(iface, sizeof(iface), "eth%d", i);
-        strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
 
-        // MAC 주소 가져오기
-        if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
-            perror("ioctl SIOCGIFHWADDR");
-            close(sock);
-            return -1;
-        }
+    // ethtool을 사용하여 링크 상태 확인
+    edata.cmd = ETHTOOL_GLINK;
+    ifr.ifr_data = (caddr_t)&edata;
 
-        // MAC 주소를 문자열로 변환
-        snprintf(mac_addr, sizeof(mac_addr), "%02x:%02x:%02x:%02x:%02x:%02x",
-                 (unsigned char)ifr.ifr_hwaddr.sa_data[0],
-                 (unsigned char)ifr.ifr_hwaddr.sa_data[1],
-                 (unsigned char)ifr.ifr_hwaddr.sa_data[2],
-                 (unsigned char)ifr.ifr_hwaddr.sa_data[3],
-                 (unsigned char)ifr.ifr_hwaddr.sa_data[4],
-                 (unsigned char)ifr.ifr_hwaddr.sa_data[5]);
-
-        // MAC 주소의 첫 바이트가 48(0x30)로 시작하는지 확인
-        if ((unsigned char)ifr.ifr_hwaddr.sa_data[0] == 0x48) {
-            printf("Interface %s has a MAC address starting with 48: %s\n", iface, mac_addr);
-
-            // ethtool을 사용하여 링크 상태 확인
-            edata.cmd = ETHTOOL_GLINK;
-            ifr.ifr_data = (caddr_t)&edata;
-
-            if (ioctl(sock, SIOCETHTOOL, &ifr) == -1) {
-                perror("ioctl SIOCETHTOOL");
-                close(sock);
-                return -1;
-            }
-
-            // edata.data가 1이면 링크가 감지됨
-            if (edata.data) {
-                printf("Link detected on %s\n", iface);
-                close(sock);
-                return 0; // 링크 감지됨, 정상 작동
-            } else {
-                printf("No link detected on %s\n", iface);
-            }
-        }
+    if (ioctl(sock, SIOCETHTOOL, &ifr) == -1) {
+        perror("ioctl SIOCETHTOOL");
+        close(sock);
+        return -1;
     }
-    
-    close(sock);
-    return 1; // 링크 감지되지 않음, 비정상 작동
+
+    if (edata.data) {
+        //printf("Link detected on %s\n", iface);
+        close(sock);
+        return 0; // 링크 감지됨, 정상
+    } else {
+        printf("No link detected on %s\n", iface);
+        close(sock);
+        return 1; // 링크 없음, 비정상
+    }
 }
+
 
 int checkGPU() {
     // 'deviceQuery' 프로그램의 절대 경로 지정
     const char *cmd = "/usr/bin/cuda-samples/deviceQuery";
     char buffer[512];
     FILE *pipe;
+
+    printf("\n\nStart GPU Test ......\n");
 
     // 시스템 명령어 실행 및 출력 읽기
     pipe = popen(cmd, "r");
@@ -635,6 +655,8 @@ int checkNvram() {
     char buffer[512];
     uint32_t readValue = 1;
 
+    //printf("\n\nStart NVRAM Test ......\n");
+
     // NVRAM에 값을 쓰는 명령어 실행
 
     if(WriteSystemLogTest(address, writeValue) == 1) {
@@ -650,10 +672,10 @@ int checkNvram() {
     } 
 
     if (readValue == writeValue) {
-        printf("NVRAM test passed.\n");
+       // printf("NVRAM test passed.");
         return 0;  // 값이 일치하면 0 리턴
     } else {
-        printf("NVRAM test failed: read 0x%x, expected 0x%x.\n", readValue, writeValue);
+        printf("NVRAM test failed: read 0x%x, expected 0x%x.", readValue, writeValue);
         return 1;
     }
 
@@ -662,48 +684,54 @@ int checkNvram() {
 int checkRs232() {
     char buffer[512];
 
-    if(DeactivateRS232() == 0){
-        if(ActivateRS232() == 0){
-            printf("RS232 check passed.\n");
-            return 0;
-        } 
+    //printf("\n\nStart RS232 Test ......\n");
+
+    if(isRS232Available() == 0){
+        //printf("RS232 check passed.");
+        return 0;
     }
     return 1;
 }
 
 int checkEthernetSwitch() {
-    char command[512];
-    int status = 0;
-    int port = 1;
-    uint32_t result = 0;
+    int skfd = -1;
+    int result;
+    char *iface = checkEthernetInterface(); // 예: "eth0"
 
-    if (iface[0] == '\0') {
-        checkEthernet();
+    if (!iface || iface[0] == '\0') {
+        fprintf(stderr, "No valid Ethernet interface found\n");
+        return -1;
     }
 
-    setEthernetPort(port, status);
-    result = getEthernetPort(port);
-
-    if(result == 0x0078) {
-        printf("ethernet port 1 disable success");
+    skfd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (skfd < 0) {
+        perror("socket");
+        return -1;
     }
 
-    status = 1;
+    // phy_addr = 0x02, reg = 0x03, page = -1 (기본 페이지)
+    result = mdio_read_internal(skfd, iface, 0x02, -1, 0x03);
+    close(skfd);
 
-    setEthernetPort(port, status);
-    result = getEthernetPort(port);
-
-    if(result == 0x007f) {
-        printf("ethernet port 1 enable success");
+    if (result < 0) {
+        fprintf(stderr, "Failed to read from Ethernet switch\n");
+        return -1;
     }
 
-    printf("Ethernet switch port check completed successfully.\n");
-    return 0;
+    if (result == 0x0a11) {
+        //printf("Ethernet switch test passed (Product ID: 0x%04x)\n", result);
+        return 0;
+    } else {
+        printf("Ethernet switch test failed (Read: 0x%04x)\n", result);
+        return 1;
+    }
 }
 
 int checkTempSensor() {
     char buffer[512];
     float temperature = 0.0;
+
+    printf("\n\nStart TempSensor Test ......\n");
 
     // stm32-control temp
     temperature = getTempSensorValue();
@@ -712,7 +740,7 @@ int checkTempSensor() {
         printf("Error: Failed to stm32-control temp command.\n");
         return 1;
     } else {
-        printf("Temperature sensor check passed. Temperature: %.2f\n", temperature);
+        printf("Temperature sensor check passed. Temperature: %.2f", temperature);
         return 0;
     }
 
@@ -722,6 +750,8 @@ int checkPowerMonitor() {
     char buffer[512];
     float voltage = 0.0;
     float current = 0.0;
+
+    printf("\n\nStart Power Monitor Test ......\n");
 
     // 전압 값을 읽기 위해 stm32-control vol 명령어 실행
 
@@ -746,11 +776,14 @@ int checkPowerMonitor() {
     }
 
     // 전압과 전류가 모두 정상 범위임을 확인
-    printf("Power monitor check passed. Voltage: %.2f, Current: %.2f\n", voltage, current);
+    printf("Power monitor check passed. Voltage: %.2f, Current: %.2f", voltage, current);
     return 0;
 }
 
 int checkUsb(void){
+
+    printf("\n\nStart USB Test ......\n");
+
     if(ActivateUSB()){
         printf("ActivateUSB Failed!");
         return 1;
@@ -771,6 +804,8 @@ int checkUsb(void){
 
 int checkOptic(void){
 
+    printf("\n\nStart Optic Test ......\n");
+
     uint32_t result = getOpticTestRegister();
 
     if(result == 0x10){
@@ -785,9 +820,13 @@ uint8_t CheckHwCompatInfo(void) {
     struct hwCompatInfo nvramInfo;
     struct hwCompatInfo currentInfo;
 
+    printf("\n\nStart HW Info Test ......\n");
+
+
     // NVRAM 정보 읽기
     if (ReadHwCompatInfoFromNVRAM(&nvramInfo) != 0) {
-        printf("Error reading NVRAM\n");
+        printf("Error reading NVRAM");
+
         return 1;
     }
 
@@ -832,6 +871,9 @@ uint8_t CheckHwCompatInfo(void) {
 }
 
 int checkHoldupModule(void){
+
+    printf("\n\nStart Holdup Module Test ......\n");
+
     // STM32로 HoldupModule 에서 데이터 읽기
     //1이 정상
     uint8_t holdupPFvalue = sendRequestHoldupPF();
@@ -846,6 +888,9 @@ int checkHoldupModule(void){
 }
 
 int checkStm32Status(void){
+
+    printf("\n\nStart STM32 Test ......\n");
+
     uint8_t stm32Status = sendStm32Status();
 
     if ( stm32Status == 1 ) {
@@ -862,6 +907,8 @@ int checkPowerStatus(void){
     uint8_t undervoltage_mask = (1 << 1);
     uint8_t overcurrent_mask = (1 << 2);
 
+    printf("\n\nStart Power Status Test ......\n");
+
     if ( powerStatus & (overvoltage_mask | undervoltage_mask | overcurrent_mask ) ) {
         return 1;
     } else {
@@ -871,6 +918,10 @@ int checkPowerStatus(void){
 }
 
 int checkLan7800(void){
+
+    printf("\n\nStart LAN7800 Test ......\n");
+
+
     char* otherIface = checkEthernetInterface();
     char* iface;
 
@@ -892,6 +943,9 @@ int checkLan7800(void){
 
 // USB1 상태 확인 함수
 int checkUSBc(void) {
+    printf("\n\nStart USB C Test ......\n");
+
+
     FILE *file = fopen(USB1_PATH, "r");
     if (!file) {
         perror("Failed to open USB1 status file");
@@ -917,6 +971,8 @@ int checkUSBc(void) {
 
 // USB2 상태 확인 함수
 int checkUSBa(void) {
+    printf("\n\nStart USB A Test ......\n");
+
     FILE *file = fopen(USB2_PATH, "r");
     if (!file) {
         perror("Failed to open USB2 status file");
@@ -939,11 +995,13 @@ int checkUSBa(void) {
 }
 
 
+
 void RequestBit(uint32_t mtype) {
     uint32_t bitStatus = 0;
+    char rs232Result[128] = {0};
 
     // DEBUG: 초기화 메시지 출력
-    printf("Starting RequestBit function, mtype = 0x%08X\n", mtype);
+    printf("\n\n Starting RequestBit function, mtype = 0x%08X\n", mtype);
 
     // 상태 체크 (bitStatus에 저장)
     bitStatus |= ((checkGPU() != 0) << 0);                     // GPU 상태
@@ -972,7 +1030,7 @@ void RequestBit(uint32_t mtype) {
     bitStatus |= (1 << 31);
 
     // 결과 출력 (한 번에 출력)
-    printf("Test Results:\n");
+    printf("\n\n [ PBIT Test Results ]\n");
     printf("%-20s = %u\n", "GPU",                 (bitStatus >> 0)  & 1);
     printf("%-20s = %u\n", "SSD(Data)",           (bitStatus >> 1)  & 1);
     printf("%-20s = %u\n", "GPIO Expander",       (bitStatus >> 2)  & 1);
@@ -996,61 +1054,73 @@ void RequestBit(uint32_t mtype) {
 
     // 에러 비트 확인
     if (bitStatus & 0x7FFFFFFF) {
-        printf("bit error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
+        printf("\n bit error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
         WriteBitErrorData(bitStatus, mtype);
     }
 
     // 결과 저장
     WriteBitResult(mtype, bitStatus);
-    printf("RequestBit function completed, final bitStatus = 0x%08X\n", bitStatus);
+
+    // 성공/실패 출력
+    if (bitStatus & 0x7FFFFFFF) {
+        printf("\n[ PBIT FAIL ]  \n");
+        snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT FAIL ] ");
+    } else {
+        printf("\n[ PBIT SUCCESS] \n");
+        snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT SUCCESS ] ");
+    }
+
+    sendRS232Message(rs232Result); //Rs232 전송
 }
 
 void RequestCBIT(uint32_t mtype) {
     uint32_t bitStatus = 0;
+    char rs232Result[128] = {0};
 
     // DEBUG: 초기화 메시지 출력
-    printf("Starting RequestCBIT function, mtype = 0x%08X\n", mtype);
+    //printf("\n\nStarting RequestCBIT function, mtype = 0x%08X\n", mtype);
 
     // CBIT 항목 상태 체크
-    bitStatus |= ((check_gpio_expander() != 0) << 0);          // GPIO Expander 상태
-    bitStatus |= ((checkEthernet() != 0) << 1);               // Ethernet PHY 상태
-    bitStatus |= ((checkNvram() != 0) << 2);                  // NVRAM 상태
-    bitStatus |= ((checkDiscrete_in() != 0) << 3);            // Discrete In 상태
-    bitStatus |= ((check_discrete_out() != 0) << 4);          // Discrete Out 상태
-    bitStatus |= ((checkRs232() != 0) << 5);                  // RS232 상태
-    bitStatus |= ((checkEthernetSwitch() != 0) << 6);         // Ethernet Switch 상태
-    bitStatus |= ((checkTempSensor() != 0) << 7);             // 온도 센서 상태
-    bitStatus |= ((checkPowerMonitor() != 0) << 8);           // 전력 모니터 상태
-    bitStatus |= ((checkHoldupModule() != 0) << 9);           // Holdup Module 상태
-    bitStatus |= ((checkStm32Status() != 0) << 10);           // STM32 상태
+    bitStatus |= ((check_gpio_expander()    != 0) << 0);   // GPIO Expander 상태
+    bitStatus |= ((checkEthernet()          != 0) << 1);   // Ethernet PHY 상태
+    bitStatus |= ((checkNvram()             != 0) << 2);   // NVRAM 상태
+    bitStatus |= ((checkDiscrete_in()       != 0) << 3);   // Discrete In 상태
+    bitStatus |= ((check_discrete_out()     != 0) << 4);   // Discrete Out 상태
+    bitStatus |= ((checkRs232()             != 0) << 5);   // RS232 상태
+    bitStatus |= ((checkEthernetSwitch()    != 0) << 6);   // Ethernet Switch 상태
 
     // 플래그 비트 설정 (31번 비트)
     bitStatus |= (1 << 31);
 
     // 결과 출력
-    printf("CBIT Test Results:\n");
-    printf("GPIO Expander = %u\n", (bitStatus >> 0) & 1);
-    printf("Ethernet PHY = %u\n", (bitStatus >> 1) & 1);
-    printf("NVRAM = %u\n", (bitStatus >> 2) & 1);
-    printf("Discrete In = %u\n", (bitStatus >> 3) & 1);
-    printf("Discrete Out = %u\n", (bitStatus >> 4) & 1);
-    printf("RS232 = %u\n", (bitStatus >> 5) & 1);
-    printf("Ethernet Switch = %u\n", (bitStatus >> 6) & 1);
-    printf("Temperature Sensor = %u\n", (bitStatus >> 7) & 1);
-    printf("Power Monitor = %u\n", (bitStatus >> 8) & 1);
-    printf("Holdup Module = %u\n", (bitStatus >> 9) & 1);
-    printf("STM32 Status = %u\n", (bitStatus >> 10) & 1);
+    // printf("\n     [ CBIT Test Results ]\n");
+    // printf("%-20s : %u\n", "GPIO Expander",     (bitStatus >> 0)  & 1);
+    // printf("%-20s : %u\n", "Ethernet PHY",      (bitStatus >> 1)  & 1);
+    // printf("%-20s : %u\n", "NVRAM",             (bitStatus >> 2)  & 1);
+    // printf("%-20s : %u\n", "Discrete In",       (bitStatus >> 3)  & 1);
+    // printf("%-20s : %u\n", "Discrete Out",      (bitStatus >> 4)  & 1);
+    // printf("%-20s : %u\n", "RS232",             (bitStatus >> 5)  & 1);
+    // printf("%-20s : %u\n", "Ethernet Switch",   (bitStatus >> 6)  & 1);
 
     // 에러 비트 확인
     if (bitStatus & 0x7FFFFFFF) {
-        printf("CBIT error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
+        //printf("CBIT error occurred, bitStatus = 0x%08X, mtype = 0x%08X.\n", bitStatus, mtype);
         WriteBitErrorData(bitStatus, mtype);
     }
 
     // 결과 저장
     WriteBitResult(mtype, bitStatus);
-    printf("RequestCBIT function completed, final bitStatus = 0x%08X\n", bitStatus);
+
+    // 성공/실패 출력
+    if (bitStatus & 0x7FFFFFFF) {
+        //printf("\n[CBIT FAIL ]   \n");
+        snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT FAIL] ");
+    } else {
+        //printf("\n[CBIT SUCCESS] \n");
+        snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT SUCCESS] ");
+    }
 }
+
 
 uint32_t readtBitResult(uint32_t type) {
     uint32_t bitResult = ReadBitResult(type);
@@ -1068,5 +1138,4 @@ uint32_t readtBitResult(uint32_t type) {
 
     return bitResult;
 }
-
 

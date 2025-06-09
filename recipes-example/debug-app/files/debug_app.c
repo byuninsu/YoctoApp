@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <termios.h>
 #include "watchdog_control.h"
 #include "usb_control.h"
 #include "stm32_control.h"
@@ -148,22 +149,15 @@ int main(int argc, char *argv[]) {
 
     // Handling 'ethernet' commands
     else if (strcmp(argv[1], "ethernet") == 0) {
-        if (argc < 4) {
-            fprintf(stderr, "Usage: %s ethernet <set|get|> <1~9> <gpio|conf> [args...]\n", argv[0]);
-            return 1;
-        }
         if (strcmp(argv[2], "init") == 0) {
             uint16_t readValue; 
-            uint32_t discreteIn7to0Value = GetDiscreteState7to0();
-            uint32_t discreteIn15to8Value = GetDiscreteState15to8();
+        
+            readValue = GetDiscreteState();
 
-            readValue = (discreteIn15to8Value & 0xFF) <<8;
-            readValue |= discreteIn7to0Value & 0xFF;
-
-            int isHigh12 = readValue & (1 << 12);
-            int isHigh13 = readValue & (1 << 13);
-            int isHigh14 = readValue & (1 << 14);
-            int isHigh15 = readValue & (1 << 15);
+            int isHigh12 = readValue & (1 << 3);
+            int isHigh13 = readValue & (1 << 2);
+            int isHigh14 = readValue & (1 << 1);
+            int isHigh15 = readValue & (1 << 0);
 
             if (isHigh12 && (isHigh13 == 0 && isHigh14 == 0 && isHigh15 ==0)) {
                 printf("Ethernet init : Optic Set.\n");
@@ -176,9 +170,6 @@ int main(int argc, char *argv[]) {
             } else {
                 printf("Ethernet init : Program Pin Compatibility Fault. Logging error...\n");
                 logProgramPinError();
-                
-                printf("Shutting down system...\n");
-                system("poweroff");
             }
         }
 
@@ -207,13 +198,72 @@ int main(int argc, char *argv[]) {
             } else if (strcmp(argv[3], "enable") ==0) {
                 snprintf(command, sizeof(command), "/usr/sbin/ethtool -s %s autoneg on", iface);
                 printf("Enabling auto-negotiation on %s\n", iface);
-
             }
             int status = system(command);
             if (status == -1) {
                 perror("Failed to execute ethtool command");
                 return 1;
             }
+        } else if (strcmp(argv[2], "setip") == 0) {
+            struct in_addr ip_addr;
+            char command[128] = {0};
+            int ethKind = atoi(argv[3]); // 1 : usb to ethernet, 2 : 6390x
+            char* ipNum = argv[4];
+
+            char* ethernetInterface = checkEthernetInterface();
+            char* iface;
+
+            if (inet_aton(ipNum, &ip_addr) == 0) {
+                fprintf(stderr, "Invalid IP address format: %s\n", ipNum);
+                return;
+            }
+
+            uint32_t ip = ntohl(ip_addr.s_addr);
+            ip &= 0xFFFFFF00;  // Apply /24 netmask (255.255.255.0)
+            ip_addr.s_addr = htonl(ip);
+
+            char subnetStr[INET_ADDRSTRLEN] = {0};
+            inet_ntop(AF_INET, &ip_addr, subnetStr, sizeof(subnetStr));
+
+            if (ethKind == 2) {
+                iface = ethernetInterface;
+            } else if (ethKind == 1) {
+                if (strcmp(ethernetInterface, "eth0") == 0) {
+                    iface = "eth1";
+                } else {
+                    iface = "eth0";
+                }
+            } else {
+                fprintf(stderr, "Invalid ethKind value: %d (expected 1 or 2)\n", ethKind);
+                return;
+            }
+
+            if (ethKind == 1) {
+                snprintf(command, sizeof(command), "/usr/sbin/ethtool -s %s autoneg on", iface);
+                int status = system(command);
+                if (status == -1) {
+                    perror("Failed to execute ethtool command");
+                    return;
+                }
+            }
+
+            // Set IP address
+            snprintf(command, sizeof(command), "ifconfig %s %s", iface, ipNum);
+            if (system(command) != 0) {
+                fprintf(stderr, "Failed to set IP address for %s.\n", iface);
+                return;
+            }
+
+            // Add dynamic route based on subnet
+            snprintf(command, sizeof(command),
+                    "route add -net %s netmask 255.255.255.0 dev %s",
+                    subnetStr, iface);
+            if (system(command) != 0) {
+                fprintf(stderr, "Failed to add route for %s/24.\n", subnetStr);
+                return;
+            }
+
+            printf("Setting IP %s on %s...\n", ipNum, iface);
         }
     }
 
@@ -328,14 +378,22 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[3], "ssd") == 0) {
             const struct hwCompatInfo myInfo = {
                 .supplier_part_no = "OESG-51G09000",
-                .supplier_serial_no = "UB-AAIS001",
+                .supplier_serial_no = "2504H0004G",
                 .ssd0_model_no = "TS320GMTE560I", 
-                .ssd0_serial_no = "I483820001",
+                .ssd0_serial_no = "I490480002",
                 .ssd1_model_no = "EXPI4M7680GB",
-                .ssd1_serial_no = "X08TZB3R130446",
+                .ssd1_serial_no = "X08TZB3R130456",
                 .sw_part_number = "HSC-OESG-IRIS"
             };
             WriteHwCompatInfoToNVRAM(&myInfo);
+        } else if (strcmp(argv[3], "serial") == 0) {
+            int fieldIndex = atoi(argv[4]);    
+            const char *content = argv[5];     
+            if (fieldIndex >= 1 && fieldIndex <= 7) {
+                WriteSerialInfoToNVRAM(fieldIndex, content);
+            } else {
+                printf("Invalid field index. Use 1~7.\n");
+            }
         } else {
             fprintf(stderr, "Invalid write type: %s\n", argv[3]);
         }
@@ -513,10 +571,10 @@ else if (strcmp(argv[1], "nvram") == 0) {
         else if (strcmp(argv[2], "check") == 0) {  
             uint32_t discreteinValue = GetDiscreteState();
 
-            if( (discreteinValue & 0xF000) == 0x1000 ) {
+            if( (discreteinValue & 0x000F) == 0x0008 ) {
                 setOpticPort();
                 printf("Ethernet Optic Discrete Check : Setting Optic Ethernet.\n");
-            } else if ( (discreteinValue & 0xF000) == 0x7000 || (discreteinValue & 0xF000) == 0x3000 ) {
+            } else if ( (discreteinValue & 0x000F) == 0x0007 || (discreteinValue & 0x000F) == 0x0003 ) {
                 setDefaultPort();
                 printf("Ethernet Optic Discrete Check : Setting Copper Ethernet.\n");
             } else {
@@ -580,10 +638,6 @@ else if (strcmp(argv[1], "nvram") == 0) {
 
         // Handling 'boot mode' commands
     else if (strcmp(argv[1], "bootmode") == 0) {
-        if (argc < 2) {
-            fprintf(stderr, "Usage: %s bootmode check\n", argv[0]);
-            return 1;
-        }
 
         if (strcmp(argv[2], "check") == 0) {
             uint32_t discreteInValue = GetDiscreteState();
@@ -591,9 +645,8 @@ else if (strcmp(argv[1], "nvram") == 0) {
             if ((discreteInValue & 0x0020) == 0x0020 && (discreteInValue & 0x0040) == 0) {
                 char command[256];
 
-                setVlanStp();
-                setPortDisableWithout2();
-
+                //setVlanStp();
+                //setPortDisableWithout2();
 
                 snprintf(command, sizeof(command), "ethernet-test broadcast start &");
                 int ret = system(command);
@@ -653,7 +706,24 @@ else if (strcmp(argv[1], "nvram") == 0) {
                 printf("PHY setting disabled.\n");
 
             }
-        } 
+        } else if ( strcmp(argv[2], "complete") == 0) {
+            char rs232Result[128] = {0};
+
+            uint32_t result = readtBitResult(2);
+
+            if (result & 0x7FFFFFFF) {
+                printf("\n[ BSP & API initialization Fail ]\n");
+                snprintf(rs232Result, sizeof(rs232Result), "\n[ BSP & API initialization Fail ]\n ");
+            } else {
+                printf("\n[ BSP & API initialization Success ]\n");
+                snprintf(rs232Result, sizeof(rs232Result), "\n[ BSP & API initialization Success ]\n ");
+            }
+
+            sendRS232Message(rs232Result); //Rs232 전송
+        } else if ( strcmp(argv[2], "startSh") == 0) {
+            system("sh /mnt/dataSSD/huins_exec/root/testsh/latest/run-all.sh");
+        }
+
     }
 
     // BIT Check commands
@@ -730,6 +800,8 @@ else if (strcmp(argv[1], "nvram") == 0) {
                 RequestBit(type);
             } else if (type == 3) {
                 RequestCBIT(type);
+            } else if (type == 4) {
+                RequestBit(type);
             }
             
         } else {

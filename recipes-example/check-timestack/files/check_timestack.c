@@ -35,43 +35,60 @@ void initialize_time(int *hours, int *minutes, int *seconds) {
 
     fseek(file, 0, SEEK_END);
     long filesize = ftell(file);
-    rewind(file);
-
-    char *content = (char *)malloc(filesize + 1);
-    if (!content) {
+    if (filesize == 0) {
         fclose(file);
-        perror("malloc failed");
+        *hours = 0;
+        *minutes = 0;
+        *seconds = 0;
         return;
     }
 
-    fread(content, 1, filesize, file);
-    content[filesize] = '\0'; 
-    fclose(file);
+    long pos = filesize - 1;
+    char ch;
+    int found = 0;
 
-    char *line = strtok(content, "\n");
-    char last_time[9] = "00000000";
-
-    while (line != NULL) {
-        cJSON *json = cJSON_Parse(line);
-        if (json) {
-            cJSON *time_item = cJSON_GetObjectItem(json, "time");
-            if (cJSON_IsString(time_item) && time_item->valuestring != NULL) {
-                strncpy(last_time, time_item->valuestring, 8);
-                last_time[8] = '\0'; 
-            }
-            cJSON_Delete(json);
+    // 거꾸로 가면서 \n을 찾되, 마지막 줄이 \n 없이 끝났을 경우 고려
+    while (pos >= 0) {
+        fseek(file, pos, SEEK_SET);
+        fread(&ch, 1, 1, file);
+        if (ch == '\n' && pos != filesize - 1) {  // 파일 끝에 바로 \n이 있을 경우는 무시
+            found = 1;
+            pos++;
+            break;
         }
-        line = strtok(NULL, "\n");
+        pos--;
     }
 
-    free(content);
+    if (pos < 0) pos = 0;  // 파일 처음까지 갔다면 pos를 0으로
 
-    sscanf(last_time, "%4d%2d%2d", hours, minutes, seconds);
+    fseek(file, pos, SEEK_SET);
 
-    *minutes += *seconds / 60;
-    *hours += *minutes / 60;
-    *minutes %= 60;
-    *seconds %= 60;
+    char line[1024] = {0};  // 넉넉히 버퍼 잡자
+    if (fgets(line, sizeof(line), file) == NULL) {
+        fclose(file);
+        *hours = 0;
+        *minutes = 0;
+        *seconds = 0;
+        return;
+    }
+    fclose(file);
+
+    // 읽은 line 디버그로 찍어보자 (초기 디버깅용)
+    printf("[DEBUG] last line read: %s\n", line);
+
+    cJSON *json = cJSON_Parse(line);
+    if (json) {
+        cJSON *time_item = cJSON_GetObjectItem(json, "time");
+        if (cJSON_IsString(time_item) && time_item->valuestring != NULL) {
+            sscanf(time_item->valuestring, "%4d%2d%2d", hours, minutes, seconds);
+        }
+        cJSON_Delete(json);
+    } else {
+        printf("[ERROR] Failed to parse JSON line: %s\n", line);
+        *hours = 0;
+        *minutes = 0;
+        *seconds = 0;
+    }
 }
 
 

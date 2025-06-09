@@ -123,7 +123,7 @@ char* checkEthernetInterface() {
                  (unsigned char)ifr.ifr_hwaddr.sa_data[5]);
 
         if ((unsigned char)ifr.ifr_hwaddr.sa_data[0] == 0x48) {
-            printf("Interface %s has a MAC address starting with 48: %s\n", iface, mac_addr);
+            //printf("Interface %s has a MAC address starting with 48: %s\n", iface, mac_addr);
 
             edata.cmd = ETHTOOL_GLINK;
             ifr.ifr_data = (caddr_t)&edata;
@@ -172,7 +172,7 @@ uint8_t setEthernetPort(int port, int state) {
     if (state == 1) {
         mdio_write(iface, phy_addr, page, reg_addr, 0x007f);
     } else {
-        mdio_write(iface, phy_addr, page, reg_addr, 0x0078);
+        mdio_write(iface, phy_addr, page, reg_addr, 0x007d);
     }
 
     close(skfd);
@@ -358,6 +358,5 @@ uint8_t setPortEnableWithout2(void) {
 
     return 0;
 }
-
 
 

@@ -10,7 +10,6 @@
 
 case "$1" in
   start)
-    echo "Starting dhcpcd"
     /sbin/dhcpcd
     sleep 1
     /usr/bin/debug-app ethernet init
@@ -29,7 +28,13 @@ case "$1" in
     sleep 1
     /usr/bin/debug-app led set status green
     sleep 1
+    /usr/bin/debug-app ethernet setip 2 192.168.10.7
+    sleep 1
     /usr/bin/debug-app check all 2
+    sleep 1
+    /usr/bin/debug-app bootmode complete
+    sleep 1
+    /usr/bin/debug-app bootmode startSh
     ;;
   stop)
     echo "Stopping dhcpcd"

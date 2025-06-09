@@ -66,8 +66,7 @@ void RequestCBIT(uint32_t mtype);
 uint32_t readtBitResult(uint32_t type);
 SSD_Status getSSDSmartLog(uint8_t ssd_type);
 uint8_t initializeDataSSD(void);
-
-
+void sendRS232Message(const char* message);
 
 
 
