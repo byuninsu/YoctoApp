@@ -8,7 +8,7 @@
 
 #define JSON_FILE_PATH "/mnt/dataSSD/ssdLog_test.json"
 #define SSD_DEVICE "/dev/nvme0n1"
-#define LOG_INTERVAL 900 // 1 minute in seconds
+#define LOG_INTERVAL 900 
 
 // 시간 계산 함수
 void update_time(int *hours, int *minutes, int *seconds) {

@@ -455,17 +455,35 @@ uint32_t  ReadBootCondition(void) {
     return ReadNVRAMValue(NVRAM_BOOTING_CONDITION);
 }
 
-uint32_t  WriteCumulativeTime(uint32_t time) {
+uint32_t WriteCumulativeTime(uint32_t time) {
+    uint32_t readValue = ReadCumulativeTime();  
+    uint32_t sumValue = readValue + time;  
 
-    uint32_t readValue = ReadCumulativeTime();
-    uint32_t writeValue = readValue + time;
+    uint32_t minutes = sumValue & 0xFF;  // 하위 8비트: 분
+    uint32_t hours = (sumValue >> 8) & 0xFFFFFF;  // 상위 24비트: 시간
 
+    if (minutes >= 60) {
+        hours += minutes / 60; 
+        minutes = minutes % 60; 
+    }
+
+    // 시간과 분을 하나의 32비트 값으로 결합 (HHHHHHMM 형식)
+    uint32_t writeValue = (hours << 8) | minutes;
+
+    // NVRAM에 쓴 값 저장
     return WriteNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR, writeValue);
 }
 
 uint32_t  ReadCumulativeTime(void) {
 
     return ReadNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR);
+}
+
+uint32_t  ReWriteCumulativeTime(uint32_t time) {
+
+    uint32_t writeValue = time;
+
+    return WriteNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR, writeValue);
 }
 
 uint32_t  WriteBitResult(uint32_t address, uint32_t bitResult) {

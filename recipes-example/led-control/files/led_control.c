@@ -141,6 +141,7 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
     if (i2c_read_byte(reg, &port_value) != 0) {
         fprintf(stderr, "Failed to read from I2C device (reg: 0x%x)\n", reg);
         i2cClose();
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -155,6 +156,7 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
     if (i2c_write_byte(reg, new_value) != 0) {
         fprintf(stderr, "Failed to write to I2C device (reg: 0x%x)\n", reg);
         i2cClose();
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -163,6 +165,7 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
     if (i2c_read_byte(conf_reg, &conf_value) != 0) {
         fprintf(stderr, "Failed to read configuration register (reg: 0x%x)\n", conf_reg);
         i2cClose();
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -172,6 +175,7 @@ uint32_t setDiscreteOut(uint8_t gpio, uint16_t value) {
         if (i2c_write_byte(conf_reg, conf_value) != 0) {
             fprintf(stderr, "Failed to write configuration register (reg: 0x%x)\n", conf_reg);
             i2cClose();
+            pthread_mutex_unlock(&i2c_mutex);
             return 1;
         }
         printf("GPIO %d mode set to output (0)\n", original_gpio);
@@ -200,6 +204,7 @@ uint32_t setDiscreteOutAll(uint16_t value) {
         i2c_write_byte(GPIO_EXPENDER_00P, port0_value) != 0) {
         fprintf(stderr, "Failed to write to Port 0\n");
         i2cClose();
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -208,6 +213,7 @@ uint32_t setDiscreteOutAll(uint16_t value) {
         i2c_write_byte(GPIO_EXPENDER_01P, port1_value) != 0) {
         fprintf(stderr, "Failed to write to Port 1\n");
         i2cClose();
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -229,6 +235,7 @@ uint8_t getDiscreteOut(uint8_t gpio) {
     // GPIO 범위 확인
     if (gpio >= 16) {
         fprintf(stderr, "Invalid GPIO number: %d\n", gpio);
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -242,6 +249,7 @@ uint8_t getDiscreteOut(uint8_t gpio) {
 
     if (i2c_read_byte(reg, &currentValue) != 0) {
         fprintf(stderr, "Failed to read from I2C device\n");
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -268,6 +276,7 @@ uint16_t getDiscreteOutAll(void) {
     if (i2c_read_byte(GPIO_EXPENDER_00P, &reg0Value) != 0) {
         fprintf(stderr, "Failed to read from I2C device (GPIO 0~7)\n");
         i2cClose();
+        pthread_mutex_unlock(&i2c_mutex);
         return 0xFFFF; // 에러 표시로 모두 1을 반환
     }
 
@@ -275,6 +284,7 @@ uint16_t getDiscreteOutAll(void) {
     if (i2c_read_byte(GPIO_EXPENDER_01P, &reg1Value) != 0) {
         fprintf(stderr, "Failed to read from I2C device (GPIO 8~15)\n");
         i2cClose();
+        pthread_mutex_unlock(&i2c_mutex);
         return 0xFFFF; // 에러 표시로 모두 1을 반환
     }
 
@@ -299,6 +309,7 @@ uint32_t setDiscreteConf(uint8_t port, uint8_t value) {
 
     if (i2c_write_byte(reg, value) != 0) {
         fprintf(stderr, "Failed to write to I2C device\n");
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -325,6 +336,7 @@ uint32_t getDiscreteConf(uint8_t port, uint8_t *value) {
 
     if (i2c_read_byte(reg, value) != 0) {
         fprintf(stderr, "Failed to read from I2C device\n");
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -351,6 +363,7 @@ uint32_t setDiscreteInput(uint8_t port, uint8_t value) {
 
     if (i2c_write_byte(reg, value) != 0) {
         fprintf(stderr, "Failed to write to I2C device\n");
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 
@@ -376,6 +389,7 @@ uint32_t getDiscreteInput(uint8_t port, uint8_t *value) {
 
     if (i2c_read_byte(reg, value) != 0) {
         fprintf(stderr, "Failed to read from I2C device\n");
+        pthread_mutex_unlock(&i2c_mutex);
         return 1;
     }
 

@@ -85,6 +85,7 @@ uint32_t ReadHwCompatInfoFromNVRAM(struct hwCompatInfo *info);
 uint32_t WriteQtTestValueToNVRAM(const char *value);
 uint32_t ReadQtTestValueFromNVRAM(char *outBuffer);
 uint32_t WriteSerialInfoToNVRAM(int index, const char *value);
+uint32_t ReWriteCumulativeTime(uint32_t time);
 
 
 #endif  // NVRAM_CONTROL_H

@@ -8,25 +8,14 @@
 # Description:       Enable DHCP client daemon
 ### END INIT INFO
 
-MARKER_FILE="/var/lib/nvram_ssd_written"
-
 case "$1" in
   start)
     /sbin/dhcpcd
     sleep 1
     /usr/bin/debug-app ethernet init
     sleep 1
-
-    # 최초 1회만 수행
-    if [ ! -f "$MARKER_FILE" ]; then
-        echo "First boot: writing to NVRAM for SSD"
-        /usr/bin/debug-app nvram write ssd
-        touch "$MARKER_FILE"
-    else
-        echo "NVRAM write for SSD already done, skipping."
-    fi
+    /usr/bin/debug-app nvram write ssd
     sleep 1
-
     /usr/bin/debug-app ethernet nego disable
     sleep 1
     /usr/bin/debug-app bootmode check
@@ -42,8 +31,6 @@ case "$1" in
     /usr/bin/debug-app ethernet setip 2 192.168.10.7
     sleep 1
     /usr/bin/debug-app check all 2
-    sleep 1
-    /usr/bin/debug-app usb cinit
     sleep 1
     /usr/bin/debug-app bootmode complete
     sleep 1
@@ -65,4 +52,3 @@ case "$1" in
 esac
 
 exit 0
-

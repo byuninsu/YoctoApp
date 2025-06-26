@@ -186,12 +186,7 @@ const char* cBitItemNames[] = {
     "NVRAM",
     "Discrete Input",
     "Discrete Output",
-    "RS232 Transceiver",
-    "Ethernet Switch",
-    "Temperature Sensor",
-    "Power Monitor",
-    "Holdup Module",
-    "STM32 Status"
+    "Ethernet Switch"
 };
 
 
@@ -211,6 +206,15 @@ const char* GetItemName(uint32_t mItem) {
     }
 }
 
+const char* GetCbitItemName(uint32_t mItem) {
+    if (mItem < GetItemCountofCBIT()) {
+        return cBitItemNames[mItem];
+    } else {
+        return "Unknown";
+    }
+}
+
+
 uint32_t GetLastSequence(const char *filePath) {
     FILE *file = fopen(filePath, "r");
     if (file == NULL) {
@@ -218,16 +222,21 @@ uint32_t GetLastSequence(const char *filePath) {
     }
 
     char buffer[1024];
-    char *lastLine = NULL;
+    char lastLine[1024] = {0};
 
-    // 파일 끝까지 읽어 마지막 줄 추출
+    // 마지막 비어있지 않은 줄 찾기
     while (fgets(buffer, sizeof(buffer), file) != NULL) {
-        lastLine = strdup(buffer); // 가장 마지막 줄을 복사
+        // 공백/엔터만 있는 줄은 무시
+        char *trim = buffer;
+        while (*trim == ' ' || *trim == '\t' || *trim == '\r' || *trim == '\n') trim++;
+        if (*trim != '\0') {
+            strcpy(lastLine, buffer);
+        }
     }
     fclose(file);
 
-    if (lastLine == NULL) {
-        return 1; // 빈 파일이면 Sequence는 1
+    if (lastLine[0] == '\0') {
+        return 1;
     }
 
     // 마지막 줄에서 Sequence 추출
@@ -237,7 +246,6 @@ uint32_t GetLastSequence(const char *filePath) {
         sscanf(seqStr, "\"Sequence\":%u,", &lastSequence);
         lastSequence++; // 다음 시퀀스 계산
     }
-    free(lastLine);
     return lastSequence;
 }
 
@@ -278,18 +286,27 @@ int  WriteBitErrorData(uint32_t bitStatus, uint32_t mtype) {
 
     if(mtype == 3){
         itemCount = GetItemCountofCBIT();
+
+        for (uint32_t i = 0; i < itemCount; i++) {
+        uint32_t bitValue = (bitStatus >> i) & 1;  // Extract the bit value (0 or 1)
+        fprintf(logFile, "\"%s\":%u", GetCbitItemName(i), bitValue);
+        if (i < itemCount - 1) {
+            fprintf(logFile, ",");
+        }
+    }
+        
     } else {
         itemCount = GetItemCount();
-    }
-    
-    for (uint32_t i = 0; i < itemCount; i++) {
+
+        for (uint32_t i = 0; i < itemCount; i++) {
         uint32_t bitValue = (bitStatus >> i) & 1;  // Extract the bit value (0 or 1)
         fprintf(logFile, "\"%s\":%u", GetItemName(i), bitValue);
         if (i < itemCount - 1) {
             fprintf(logFile, ",");
         }
     }
-
+    }
+    
     // Write mtype and timestamp
     fprintf(logFile, ",\"mtype\":%u,\"timestamp\":\"%s\"}\n\n", mtype, timestamp);
 
@@ -1086,8 +1103,7 @@ void RequestCBIT(uint32_t mtype) {
     bitStatus |= ((checkNvram()             != 0) << 2);   // NVRAM 상태
     bitStatus |= ((checkDiscrete_in()       != 0) << 3);   // Discrete In 상태
     bitStatus |= ((check_discrete_out()     != 0) << 4);   // Discrete Out 상태
-    bitStatus |= ((checkRs232()             != 0) << 5);   // RS232 상태
-    bitStatus |= ((checkEthernetSwitch()    != 0) << 6);   // Ethernet Switch 상태
+    bitStatus |= ((checkEthernetSwitch()    != 0) << 5);   // Ethernet Switch 상태
 
     // 플래그 비트 설정 (31번 비트)
     bitStatus |= (1 << 31);
@@ -1099,8 +1115,7 @@ void RequestCBIT(uint32_t mtype) {
     // printf("%-20s : %u\n", "NVRAM",             (bitStatus >> 2)  & 1);
     // printf("%-20s : %u\n", "Discrete In",       (bitStatus >> 3)  & 1);
     // printf("%-20s : %u\n", "Discrete Out",      (bitStatus >> 4)  & 1);
-    // printf("%-20s : %u\n", "RS232",             (bitStatus >> 5)  & 1);
-    // printf("%-20s : %u\n", "Ethernet Switch",   (bitStatus >> 6)  & 1);
+    // printf("%-20s : %u\n", "Ethernet Switch",   (bitStatus >> 5)  & 1);
 
     // 에러 비트 확인
     if (bitStatus & 0x7FFFFFFF) {
@@ -1114,10 +1129,10 @@ void RequestCBIT(uint32_t mtype) {
     // 성공/실패 출력
     if (bitStatus & 0x7FFFFFFF) {
         //printf("\n[CBIT FAIL ]   \n");
-        snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT FAIL] ");
+        //snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT FAIL] ");
     } else {
         //printf("\n[CBIT SUCCESS] \n");
-        snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT SUCCESS] ");
+        //snprintf(rs232Result, sizeof(rs232Result), "\n     [CBIT SUCCESS] ");
     }
 }
 

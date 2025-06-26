@@ -370,7 +370,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
             WriteSystemLogReasonCountCustom(addr, value);
         } else if (strcmp(argv[3], "time") == 0) {
             uint32_t time = (uint32_t)strtoul(argv[4], NULL, 0); 
-            WriteCumulativeTime(time);
+            ReWriteCumulativeTime(time);
         } else if (strcmp(argv[3], "test") == 0) {
             uint32_t addr = (uint32_t)strtoul(argv[4], NULL, 0); 
             uint32_t value = (uint32_t)strtoul(argv[5], NULL, 0); 
@@ -380,9 +380,9 @@ else if (strcmp(argv[1], "nvram") == 0) {
                 .supplier_part_no = "OESG-51G09000",
                 .supplier_serial_no = "2504H0004G",
                 .ssd0_model_no = "TS320GMTE560I", 
-                .ssd0_serial_no = "I490480002",
+                .ssd0_serial_no = "I483820001",
                 .ssd1_model_no = "EXPI4M7680GB",
-                .ssd1_serial_no = "X08TZB3R130456",
+                .ssd1_serial_no = "X08TZB3R130446",
                 .sw_part_number = "HSC-OESG-IRIS"
             };
             WriteHwCompatInfoToNVRAM(&myInfo);
@@ -523,12 +523,27 @@ else if (strcmp(argv[1], "nvram") == 0) {
             fprintf(stderr, "Usage: %s usb <enable|disable>\n", argv[0]);
             return 1;
         }
-
         if (strcmp(argv[2], "enable") == 0) {
             ActivateUSB();
         } else if (strcmp(argv[2], "disable") == 0) {
             DeactivateUSB();
+        } if (strcmp(argv[2], "cinit") == 0) {
+        // USB-C FUSB 관련 초기화
+        const char *cmd = "i2cget -y 1 0x25 0x02 0x02";
+        int ret = system(cmd);
+
+        if (ret == -1) {
+            perror("system call failed");
+            return 1;
+        } else if (WEXITSTATUS(ret) != 0) {
+            fprintf(stderr, "i2cget command failed with exit code %d\n", WEXITSTATUS(ret));
+            return 1;
         }
+
+        printf("USB-C port initialized via FUSB302 (i2c addr 0x25)\n");
+        return 0;
+        }
+
         return 0;
     }
 

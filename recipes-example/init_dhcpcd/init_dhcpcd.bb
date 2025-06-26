@@ -36,7 +36,7 @@ do_install() {
 RDEPENDS_${PN} += "dhcpcd"
 
 INITSCRIPT_NAME = "dhcpcd"
-INITSCRIPT_PARAMS = "defaults"
+INITSCRIPT_PARAMS = "start 50 2 3 4 5 . stop 90 0 1 6 ."
 
 inherit update-rc.d
 
