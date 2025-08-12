@@ -87,49 +87,49 @@ int get_fd_count(const char* pid_str) {
 }
 
 void sendRS232Message(const char* message) {
-    if (!message) return;
+    // if (!message) return;
 
-    int fd = open("/dev/ttyTHS0", O_RDWR | O_NOCTTY);
-    if (fd == -1) {
-        perror("[RS232] Failed to open");
-        return;
-    }
+    // int fd = open("/dev/ttyTHS0", O_RDWR | O_NOCTTY);
+    // if (fd == -1) {
+    //     perror("[RS232] Failed to open");
+    //     return;
+    // }
 
-    struct termios tty;
-    memset(&tty, 0, sizeof tty);
+    // struct termios tty;
+    // memset(&tty, 0, sizeof tty);
 
-    if (tcgetattr(fd, &tty) != 0) {
-        perror("[RS232] Failed to get attributes");
-        close(fd);
-        return;
-    }
+    // if (tcgetattr(fd, &tty) != 0) {
+    //     perror("[RS232] Failed to get attributes");
+    //     close(fd);
+    //     return;
+    // }
 
-    // 기본 설정 (115200 8N1)
-    tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
-    tty.c_iflag &= ~IGNBRK;
-    tty.c_lflag = 0;
-    tty.c_oflag = 0;
-    tty.c_cc[VMIN]  = 1;
-    tty.c_cc[VTIME] = 1;
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY);
-    tty.c_cflag |= (CLOCAL | CREAD);
-    tty.c_cflag &= ~(PARENB | PARODD);
-    tty.c_cflag &= ~CSTOPB;
-    tty.c_cflag &= ~CRTSCTS;
+    // // 기본 설정 (115200 8N1)
+    // tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8;
+    // tty.c_iflag &= ~IGNBRK;
+    // tty.c_lflag = 0;
+    // tty.c_oflag = 0;
+    // tty.c_cc[VMIN]  = 1;
+    // tty.c_cc[VTIME] = 1;
+    // tty.c_iflag &= ~(IXON | IXOFF | IXANY);
+    // tty.c_cflag |= (CLOCAL | CREAD);
+    // tty.c_cflag &= ~(PARENB | PARODD);
+    // tty.c_cflag &= ~CSTOPB;
+    // tty.c_cflag &= ~CRTSCTS;
 
-    cfsetospeed(&tty, B115200);
-    cfsetispeed(&tty, B115200);
+    // cfsetospeed(&tty, B115200);
+    // cfsetispeed(&tty, B115200);
 
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-        perror("[RS232] Failed to set attributes");
-        close(fd);
-        return;
-    }
+    // if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+    //     perror("[RS232] Failed to set attributes");
+    //     close(fd);
+    //     return;
+    // }
 
-    write(fd, message, strlen(message));
-    write(fd, "\r\n", 2);
-    tcdrain(fd);     
-    close(fd);
+    // write(fd, message, strlen(message));
+    // write(fd, "\r\n", 2);
+    // tcdrain(fd);     
+    // close(fd);
 }
 
 int main() {

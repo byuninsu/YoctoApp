@@ -3,11 +3,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/file.h>
 #include <linux/spi/spidev.h>
 #include <string.h>
-#include <pthread.h>
-#include "libstm32_control.h"
+#include "stm32_control.h"
 #include "nvram_control.h"
 
 static const char *device = "/dev/spidev1.0";
@@ -18,7 +16,6 @@ static uint8_t startBit = 0xAA;
 static uint8_t lasttBit = 0xBB;
 static int fd = -1;        
 static int lock_fd = -1;   
-static pthread_mutex_t spi_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // STM32용
 #define SPI_LOCK_FILE "/var/lock/spi_stm32.lock"
@@ -65,36 +62,25 @@ int spiInit(void) {
 }
 
 void stm32_spiLock(void) {
-    pthread_mutex_lock(&spi_mutex);
-
     if (lock_fd == -1) {
         lock_fd = open(SPI_LOCK_FILE, O_CREAT | O_RDWR, 0666);
         if (lock_fd < 0) {
             perror("lock file open failed");
-            pthread_mutex_unlock(&spi_mutex);
             return;
         }
     }
 
     if (flock(lock_fd, LOCK_EX) < 0) {
         perror("flock LOCK_EX failed");
-        close(lock_fd);
-        lock_fd = -1;
-        pthread_mutex_unlock(&spi_mutex);
-        return;
     }
 }
 
 void stm32_spiUnlock(void) {
     if (lock_fd != -1) {
-        if (flock(lock_fd, LOCK_UN) < 0) {
-            perror("flock LOCK_UN failed");
-        }
+        flock(lock_fd, LOCK_UN);
         close(lock_fd);
         lock_fd = -1;
     }
-
-    pthread_mutex_unlock(&spi_mutex);
 }
 
 float sendCommand(stm32_spi_reg command) {

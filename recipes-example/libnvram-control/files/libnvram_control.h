@@ -37,7 +37,6 @@ typedef enum {
     NVRAM_BIT_RESULT_INITIATED          = 0x34,
 
     NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR  = 0x3C,
-    NVRAM_CUMULATIVE_TIME_ADDR          = 0x40,
     NVRAM_BOOT_MODE                     = 0x44,
 
     NVRAM_SUPPLIER_PART_NO              = 0x48,   // 0x48 ~ 0x57
@@ -48,7 +47,9 @@ typedef enum {
     NVRAM_SW_PART_NO                    = 0x98,   // 0x98 ~ 0xA7
     NVRAM_SW_SERIAL_NO                  = 0xA8,   // 0xA8 ~ 0xB7
 
-    NVRAM_QT_TEST_ADDR                  = 0xB8    // 이후 남은 공간
+    NVRAM_QT_TEST_ADDR                  = 0xB8,    
+    NVRAM_CUMULATIVE_TIME_ADDR          = 0xC0,
+    NVRAM_SW_VERSION_INFO_ADDR          = 0xC8
 } NvramAddress;
 
 

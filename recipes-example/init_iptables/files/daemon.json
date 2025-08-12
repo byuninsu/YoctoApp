@@ -1,3 +1,12 @@
 {
-  "iptables": false
-}
+  "runtimes": {
+    "nvidia": {
+      "path": "nvidia-container-runtime",
+      "runtimeArgs": []
+    }
+  },
+  "default-runtime": "runc",
+  "iptables": false,
+  "data-root": "/mnt/osSSD/docker"
+ }
+

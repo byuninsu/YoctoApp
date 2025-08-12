@@ -76,6 +76,10 @@ int mdio_read_internal(int skfd, const char *ifname, int phy_addr, int page, int
 }
 
 void sendRS232Message(const char* message) {
+    return;
+}
+
+void sendRS232MessageBeforeInit(const char* message) {
     if(isRS232Available()) return;
     if (!message) return;
 
@@ -664,38 +668,50 @@ int checkGPU() {
     return -1;
 }
 
+// int checkNvram() {
+//     int address = 12;        // NVRAM 주소
+//     srand(time(NULL));       // 랜덤 시드 설정
+//     int writeValue = rand() & 0xFF;   // 0x00 - 0xFF 범위의 랜덤 값 생성
+//     char command[512];
+//     char buffer[512];
+//     uint32_t readValue = 1;
+
+//     //printf("\n\nStart NVRAM Test ......\n");
+
+//     // NVRAM에 값을 쓰는 명령어 실행
+
+//     if(WriteSystemLogTest(address, writeValue) == 1) {
+//         printf("Failed to write to NVRAM.\n");
+//         return 1;
+//     } 
+
+//     readValue = ReadSystemLog(address);
+
+//     if( readValue == 1) {
+//         printf("Failed to write to NVRAM.\n");
+//         return 1;
+//     } 
+
+//     if (readValue == writeValue) {
+//        // printf("NVRAM test passed.");
+//         return 0;  // 값이 일치하면 0 리턴
+//     } else {
+//         printf("NVRAM test failed: read 0x%x, expected 0x%x.", readValue, writeValue);
+//         return 1;
+//     }
+// }
+
 int checkNvram() {
-    int address = 12;        // NVRAM 주소
-    srand(time(NULL));       // 랜덤 시드 설정
-    int writeValue = rand() & 0xFFFFFFFF;   // 0x00 - 0xFFFFFFFF 범위의 랜덤 값 생성
-    char command[512];
-    char buffer[512];
-    uint32_t readValue = 1;
+    uint32_t id = getNVRAMId();
 
-    //printf("\n\nStart NVRAM Test ......\n");
+    const uint32_t expected_id = 0x068188A1;
 
-    // NVRAM에 값을 쓰는 명령어 실행
-
-    if(WriteSystemLogTest(address, writeValue) == 1) {
-        printf("Failed to write to NVRAM.\n");
-        return 1;
-    } 
-
-    readValue = ReadSystemLog(address);
-
-    if( readValue == 1) {
-        printf("Failed to write to NVRAM.\n");
-        return 1;
-    } 
-
-    if (readValue == writeValue) {
-       // printf("NVRAM test passed.");
-        return 0;  // 값이 일치하면 0 리턴
+    if (id == expected_id) {
+        return 0; // ID가 일치하면 OK
     } else {
-        printf("NVRAM test failed: read 0x%x, expected 0x%x.", readValue, writeValue);
+        printf("NVRAM ID mismatch: read 0x%08X, expected 0x%08X\n", id, expected_id);
         return 1;
     }
-
 }
 
 int checkRs232() {
@@ -799,23 +815,32 @@ int checkPowerMonitor() {
 
 int checkUsb(void){
 
-    printf("\n\nStart USB Test ......\n");
+    const char* path = "/sys/bus/usb/devices/usb1/authorized";
+    char buf[2] = {0}; 
 
-    if(ActivateUSB()){
-        printf("ActivateUSB Failed!");
-        return 1;
-    } else {
-        printf("ActivateUSB success!");
+    int fd = open(path, O_RDONLY);
+    if(fd == -1){
+        perror("Failed to open authorized file for reading");
+        return -1; // 파일 열기 실패
     }
 
-    if(DeactivateUSB()){
-        printf("ActivateUSB Failed!");
-        return 1;
-    } else {
-        printf("ActivateUSB success!");
+    if (read(fd, buf, sizeof(buf)-1) == -1) {
+        perror("Failed to read authorized value");
+        close(fd);
+        return -1; // 읽기 실패
     }
 
-    printf("checkUsb passed !");
+    close(fd);
+
+    if (buf[0] == '1') {
+        return 0; // 활성화 상태
+    } else if (buf[0] == '0') {
+        return 1; // 비활성화 상태
+    } else {
+        fprintf(stderr, "Unexpected value in authorized file: %s\n", buf);
+        return -1; // 예상치 못한 값
+    }
+
     return 0;
 }
 
@@ -837,7 +862,7 @@ uint8_t CheckHwCompatInfo(void) {
     struct hwCompatInfo nvramInfo;
     struct hwCompatInfo currentInfo;
 
-    printf("\n\nStart HW Info Test ......\n");
+    printf("\n\nStart HW Info Test ......\r\n");
 
 
     // NVRAM 정보 읽기
@@ -868,13 +893,13 @@ uint8_t CheckHwCompatInfo(void) {
 
     // 로그 출력
     printf("SSD CurrentInfo:\n");
-    printf(" Supplier Part No  : %s\n", currentInfo.supplier_part_no);
-    printf(" Supplier Serial No: %s\n", currentInfo.supplier_serial_no);
-    printf(" SSD0 Model No     : %s\n", currentInfo.ssd0_model_no);
-    printf(" SSD0 Serial No    : %s\n", currentInfo.ssd0_serial_no);
-    printf(" SSD1 Model No     : %s\n", currentInfo.ssd1_model_no);
-    printf(" SSD1 Serial No    : %s\n", currentInfo.ssd1_serial_no);
-    printf(" SW Part Number    : %s\n", currentInfo.sw_part_number);
+    printf(" Supplier Part No  : %s\r\n", currentInfo.supplier_part_no);
+    printf(" Supplier Serial No: %s\r\n", currentInfo.supplier_serial_no);
+    printf(" SSD0 Model No     : %s\r\n", currentInfo.ssd0_model_no);
+    printf(" SSD0 Serial No    : %s\r\n", currentInfo.ssd0_serial_no);
+    printf(" SSD1 Model No     : %s\r\n", currentInfo.ssd1_model_no);
+    printf(" SSD1 Serial No    : %s\r\n", currentInfo.ssd1_serial_no);
+    printf(" SW Part Number    : %s\r\n", currentInfo.sw_part_number);
 
     // SSD 정보만 비교
     if (strncmp(currentInfo.ssd0_model_no, nvramInfo.ssd0_model_no, sizeof(currentInfo.ssd0_model_no)) != 0 ||
@@ -965,13 +990,13 @@ int checkUSBc(void) {
 
     FILE *file = fopen(USB1_PATH, "r");
     if (!file) {
-        perror("Failed to open USB1 status file");
+        perror("Failed to open USB C status file");
         return 1; // 파일 접근 실패 시 비정상 처리
     }
 
     int authorized;
     if (fscanf(file, "%d", &authorized) != 1) {
-        perror("Failed to read USB1 status");
+        perror("Failed to read USB C status");
         fclose(file);
         return 1; // 읽기 실패 시 비정상 처리
     }
@@ -990,15 +1015,15 @@ int checkUSBc(void) {
 int checkUSBa(void) {
     printf("\n\nStart USB A Test ......\n");
 
-    FILE *file = fopen(USB2_PATH, "r");
+    FILE *file = fopen(USB1_PATH, "r");
     if (!file) {
-        perror("Failed to open USB2 status file");
+        perror("Failed to open USB A status file");
         return 1; // 파일 접근 실패 시 비정상 처리
     }
 
     int authorized;
     if (fscanf(file, "%d", &authorized) != 1) {
-        perror("Failed to read USB2 status");
+        perror("Failed to read USB A status");
         fclose(file);
         return 1; // 읽기 실패 시 비정상 처리
     }
@@ -1081,13 +1106,13 @@ void RequestBit(uint32_t mtype) {
     // 성공/실패 출력
     if (bitStatus & 0x7FFFFFFF) {
         printf("\n[ PBIT FAIL ]  \n");
-        snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT FAIL ] ");
+        //snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT FAIL ] ");
     } else {
         printf("\n[ PBIT SUCCESS] \n");
-        snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT SUCCESS ] ");
+        //snprintf(rs232Result, sizeof(rs232Result), "\n[ PBIT SUCCESS ] ");
     }
 
-    sendRS232Message(rs232Result); //Rs232 전송
+    //sendRS232MessageBeforeInit(rs232Result); //Rs232 전송
 }
 
 void RequestCBIT(uint32_t mtype) {
@@ -1142,7 +1167,7 @@ uint32_t readtBitResult(uint32_t type) {
 
     // 31번 비트를 확인
     if ((bitResult >> 31) & 1) {
-        printf("New BIT result detected. Clearing the new value flag.\n");
+        //printf("New BIT result detected. Clearing the new value flag.\n");
 
         // 31번 비트를 0으로 초기화
         bitResult &= ~(1 << 31);

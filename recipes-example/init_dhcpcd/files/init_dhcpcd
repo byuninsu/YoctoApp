@@ -9,6 +9,8 @@
 ### END INIT INFO
 
 MARKER_FILE="/var/lib/nvram_ssd_written"
+SCRIPT_PATH="/mnt/dataSSD/huins_exec/root/testsh/latest/run-all.sh"
+
 
 case "$1" in
   start)
@@ -26,7 +28,11 @@ case "$1" in
         echo "NVRAM write for SSD already done, skipping."
     fi
     sleep 1
-
+    
+    /usr/bin/led-init &
+    sleep 1
+    echo "start" > /tmp/led_cmd && chmod 644 /tmp/led_cmd
+    sleep 1
     /usr/bin/debug-app ethernet nego disable
     sleep 1
     /usr/bin/debug-app bootmode check
@@ -37,17 +43,19 @@ case "$1" in
     sleep 1
     /usr/bin/debug-app boot systemlog
     sleep 1
+    echo "stop" > /tmp/led_cmd && chmod 644 /tmp/led_cmd
     /usr/bin/debug-app led set status green
+    sleep 1
+    /usr/bin/debug-app usb cinit
     sleep 1
     /usr/bin/debug-app ethernet setip 2 192.168.10.7
     sleep 1
     /usr/bin/debug-app check all 2
     sleep 1
-    /usr/bin/debug-app usb cinit
-    sleep 1
     /usr/bin/debug-app bootmode complete
     sleep 1
-    /usr/bin/debug-app bootmode startSh
+#   sh "$SCRIPT_PATH"
+#   /usr/bin/debug-app bootmode startSh "$SCRIPT_PATH" &
     ;;
   stop)
     echo "Stopping dhcpcd"

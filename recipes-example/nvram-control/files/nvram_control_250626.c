@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
-#include <sys/file.h>  
 #include <linux/spi/spidev.h>
 #include <string.h>
 #include <stdlib.h>
@@ -14,9 +13,6 @@ static uint32_t speed = 4500000;
 static uint8_t bits = 8;
 static uint8_t mode = 0;
 static int fd; // device
-static int lock_fd = -1;
-
-#define SPI_LOCK_FILE "/var/lock/spi_nvram.lock"
 
     
 uint32_t nvramInit(void) {
@@ -75,48 +71,25 @@ uint32_t nvramInit(void) {
     return 0; // 초기화 성공
 }
 
-void nvram_spiLock(void) {
-    if (lock_fd == -1) {
-        lock_fd = open(SPI_LOCK_FILE, O_CREAT | O_RDWR, 0666);
-        if (lock_fd < 0) {
-            perror("lock file open failed");
-            return;
-        }
-    }
-
-    if (flock(lock_fd, LOCK_EX) < 0) {
-        perror("flock LOCK_EX failed");
-    }
-}
-
-void nvram_spiUnlock(void) {
-    if (lock_fd != -1) {
-        flock(lock_fd, LOCK_UN);
-        close(lock_fd);
-        lock_fd = -1;
-    }
-}
-
 
 uint32_t ReadNVRAMValue(uint32_t address) {
-    nvram_spiLock();
+    uint8_t tx_buf1[4];  // 명령어 및 주소 전송 버퍼
+    uint8_t tx_buf2[1] = { 0x00 };  // 더미 데이터 전송 버퍼
+    uint8_t rx_buf[1] = { 0 };  // 데이터 수신 버퍼
+    uint32_t nvram_output = 0;
 
-    if (nvramInit() != 0) {
-        printf("nvramInit Fail !\n");
-        nvram_spiUnlock();
+    if(nvramInit() != 0) {
+        printf("nvramInit Fail !");
         return 1;
     }
 
-    uint8_t tx_buf1[4];  // 명령어 및 주소 전송 버퍼
-    uint8_t tx_buf2[1] = { 0x00 };  // 더미 데이터
-    uint8_t rx_buf[1] = { 0 };
-    uint32_t nvram_output = 0;
-
+    // 읽기 명령 및 주소 설정
     tx_buf1[0] = NVRAM_SPI_CMD_READ;
-    tx_buf1[1] = (address >> 16) & 0xFF;
-    tx_buf1[2] = (address >> 8) & 0xFF;
-    tx_buf1[3] = address & 0xFF;
+    tx_buf1[1] = (address >> 16) & 0xFF; // 상위 주소 비트 (A16)
+    tx_buf1[2] = (address >> 8) & 0xFF;  // 중간 8비트 (A15-A8)
+    tx_buf1[3] = address & 0xFF;         // 하위 8비트 (A7-A0)
 
+    // 명령과 주소 전송
     struct spi_ioc_transfer readXfer[2] = {
         {
             .tx_buf = (uintptr_t)tx_buf1,
@@ -139,42 +112,39 @@ uint32_t ReadNVRAMValue(uint32_t address) {
     if (ioctl(fd, SPI_IOC_MESSAGE(2), readXfer) < 0) {
         perror("Failed to send read command and address");
         close(fd);
-        fd = -1;
-        nvram_spiUnlock();
         return 1;
     }
 
+    //printf("read rx_buf[0] = 0x%02X\n", rx_buf[0]);
+
+    // 수신된 데이터 처리 (1바이트 읽음)
     nvram_output = rx_buf[0];
 
-    if (fd != -1) {
-        close(fd);
-        fd = -1;
-    }
+    // SPI 디바이스 닫기
+    close(fd);
 
-    nvram_spiUnlock();
     return nvram_output;
 }
 
 uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
-    nvram_spiLock();
-
-    if (nvramInit() != 0) {
-        printf("nvramInit Fail!\n");
-        nvram_spiUnlock();
-        return 1;
-    }
+    // input value = 0x%02x at ADdr = 0x%08x\n", value, address);
 
     uint8_t tx_buf[1];
     uint8_t tx_command_buf[5];
-    uint8_t rx_buf[5] = {0};
+    uint8_t rx_buf[5];
     uint32_t nvram_output = 0;
 
-    // 1. WREN 명령 전송
+    if (nvramInit() != 0) {
+        printf("nvramInit Fail!\n");
+        return 1;
+    }
+
+    // WREN 명령 전송
     tx_buf[0] = NVRAM_SPI_CMD_WREN;
 
     struct spi_ioc_transfer writeXfer = {
         .tx_buf = (uintptr_t)tx_buf,
-        .rx_buf = 0,
+        .rx_buf = 0,  // 읽어올 필요가 없음
         .len = 1,
         .delay_usecs = 0,
         .speed_hz = speed,
@@ -184,17 +154,19 @@ uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &writeXfer) < 0) {
         perror("Failed to send WREN command");
         close(fd);
-        fd = -1;
-        nvram_spiUnlock();
         return 1;
     }
 
-    // 2. WRITE 명령 전송 (주소 + 값)
+    // for (int i = 0; i < sizeof(tx_buf); i++) {
+    //     printf("write wren tx_buf[%d] = 0x%02X\n", i, tx_buf[i]);
+    // }
+
+    // 쓰기 명령 전송
     tx_command_buf[0] = NVRAM_SPI_CMD_WRITE;
-    tx_command_buf[1] = (address >> 16) & 0xFF;
-    tx_command_buf[2] = (address >> 8) & 0xFF;
-    tx_command_buf[3] = address & 0xFF;
-    tx_command_buf[4] = value;
+    tx_command_buf[1] = (address >> 16) & 0xFF; // 상위 주소 비트 (A16)
+    tx_command_buf[2] = (address >> 8) & 0xFF;  // 중간 8비트 (A15-A8)
+    tx_command_buf[3] = address & 0xFF;         // 하위 8비트 (A7-A0)
+    tx_command_buf[4] = value;                  // 데이터 바이트
 
     struct spi_ioc_transfer writeXfer2 = {
         .tx_buf = (uintptr_t)tx_command_buf,
@@ -208,19 +180,17 @@ uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &writeXfer2) < 0) {
         perror("Failed to send WRITE command");
         close(fd);
-        fd = -1;
-        nvram_spiUnlock();
         return 1;
     }
 
     nvram_output = rx_buf[0];
 
-    // 3. WRDI 명령 전송
+    // WRDI 명령 전송
     tx_buf[0] = NVRAM_SPI_CMD_WRDI;
 
     struct spi_ioc_transfer writeXfer3 = {
         .tx_buf = (uintptr_t)tx_buf,
-        .rx_buf = 0,
+        .rx_buf = 0,  // 읽어올 필요가 없음
         .len = 1,
         .delay_usecs = 0,
         .speed_hz = speed,
@@ -230,43 +200,34 @@ uint32_t WriteNVRAMValue(uint32_t address, uint8_t value) {
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &writeXfer3) < 0) {
         perror("Failed to send WRDI command");
         close(fd);
-        fd = -1;
-        nvram_spiUnlock();
         return 1;
     }
 
-    if (fd != -1) {
-        close(fd);
-        fd = -1;
-    }
+    // SPI 디바이스 닫기
+    close(fd);
 
-    nvram_spiUnlock();
     return nvram_output;
 }
 
 uint32_t ReadNVRAM4ByteValue(uint32_t address) {
-    //printf("ReadNVRAM4ByteValue ++++++++++++");
-
-    pid_t pid = getpid();
-    //printf("[WriteNVRAM4ByteValue] Called from PID: %d\n", pid);
+    uint8_t tx_buf1[4];  // 명령어 및 주소 전송 버퍼
+    uint8_t tx_buf2[1] = { 0x00 };  // 더미 데이터 전송 버퍼
+    uint8_t rx_buf[1] = { 0 };  // 데이터 수신 버퍼
+    uint32_t nvram_output = 0;
 
     if (nvramInit() != 0) {
-        printf("nvramInit Fail!\n");
+        printf("nvramInit Fail !");
         return 1;
     }
 
-    uint8_t tx_buf1[4];
-    uint8_t tx_buf2[1] = {0x00};
-    uint8_t rx_buf[1] = {0};
-     uint8_t read_bytes[4] = {0};
-    uint32_t nvram_output = 0;
-
     for (int i = 0; i < 4; i++) {
+        // 읽기 명령 및 주소 설정
         tx_buf1[0] = NVRAM_SPI_CMD_READ;
-        tx_buf1[1] = ((address + i) >> 16) & 0xFF;
-        tx_buf1[2] = ((address + i) >> 8) & 0xFF;
-        tx_buf1[3] = (address + i) & 0xFF;
+        tx_buf1[1] = ((address + i) >> 16) & 0xFF; // 상위 주소 비트 (A16)
+        tx_buf1[2] = ((address + i) >> 8) & 0xFF;  // 중간 8비트 (A15-A8)
+        tx_buf1[3] = (address + i) & 0xFF;         // 하위 8비트 (A7-A0)
 
+        // 명령과 주소 전송
         struct spi_ioc_transfer readXfer[2] = {
             {
                 .tx_buf = (uintptr_t)tx_buf1,
@@ -289,132 +250,114 @@ uint32_t ReadNVRAM4ByteValue(uint32_t address) {
         if (ioctl(fd, SPI_IOC_MESSAGE(2), readXfer) < 0) {
             perror("Failed to send read command and address");
             close(fd);
-            fd = -1;
             return 1;
         }
 
-         read_bytes[i] = rx_buf[0];  
-        nvram_output |= (rx_buf[0] << (8 * (3 - i)));
+
+        //printf("ReadNVRAM4ByteValue rx_buf = 0x%02X\n", rx_buf[0]);
+    
+
+        // 수신된 데이터 처리 (1바이트 읽음)
+        nvram_output |= (rx_buf[0] << (8 * (3 - i))); // MSB부터 채움
     }
 
-    if (fd != -1) {
-        close(fd);
-        fd = -1;
-    }
-
-    // printf("[DEBUG] Read 0x%06X: ", address);
-    // for (int i = 0; i < 4; i++) {
-    //     printf("0x%02X ", read_bytes[i]);
-    // }
-    // printf("Combined: 0x%08X (%u)\n", nvram_output, nvram_output);
-
-    //printf("ReadNVRAM4ByteValue ---------");
+    // SPI 디바이스 닫기
+    close(fd);
 
     return nvram_output;
 }
 
 uint32_t WriteNVRAM4ByteValue(uint32_t address, uint32_t value) {
-    //printf("WriteNVRAM4ByteValue ++++++++++++");
+    //printf("WriteNVRAM4ByteValue input value = 0x%08x at ADdr = 0x%08x\n", value, address);
 
-    pid_t pid = getpid();
-   // printf("[WriteNVRAM4ByteValue] Called from PID: %d\n", pid);
-
-    // printf("[DEBUG] WriteNVRAM4ByteValue: address=0x%06X, bytes = [0x%02X 0x%02X 0x%02X 0x%02X]  value = 0x%08X (%u)\n",
-    //     address,
-    //     (value >> 24) & 0xFF,
-    //     (value >> 16) & 0xFF,
-    //     (value >> 8)  & 0xFF,
-    //     value & 0xFF,
-    //     value,
-    //     value);
+    uint8_t tx_buf[1];
+    uint8_t tx_command_buf[5];
+    uint8_t rx_buf[1];
 
     if (nvramInit() != 0) {
         printf("nvramInit Fail!\n");
         return 1;
     }
 
-    // 1. Write Enable (WREN)
-    uint8_t wren_cmd = NVRAM_SPI_CMD_WREN;
-    struct spi_ioc_transfer wren = {
-        .tx_buf = (uintptr_t)&wren_cmd,
-        .rx_buf = 0,
-        .len = 1,
-        .delay_usecs = 0,
-        .speed_hz = speed,
-        .bits_per_word = bits
-    };
+    // WREN 명령 전송
+    tx_buf[0] = NVRAM_SPI_CMD_WREN;
 
-    if (ioctl(fd, SPI_IOC_MESSAGE(1), &wren) < 0) {
-        perror("Failed to send WREN command");
-        close(fd);
-        fd = -1;
-        return 1;
-    }
-
-    // 2. Write 4 bytes (opcode + address + 4 data bytes)
-    uint8_t tx_buf[8] = {
-        NVRAM_SPI_CMD_WRITE,
-        (address >> 16) & 0xFF,
-        (address >> 8) & 0xFF,
-        address & 0xFF,
-        (value >> 24) & 0xFF,
-        (value >> 16) & 0xFF,
-        (value >> 8) & 0xFF,
-        value & 0xFF
-    };
-
-    struct spi_ioc_transfer write = {
+    struct spi_ioc_transfer writeXfer = {
         .tx_buf = (uintptr_t)tx_buf,
         .rx_buf = 0,
-        .len = sizeof(tx_buf),
+        .len = 1,
         .delay_usecs = 0,
         .speed_hz = speed,
         .bits_per_word = bits
     };
 
-    if (ioctl(fd, SPI_IOC_MESSAGE(1), &write) < 0) {
-        perror("Failed to send WRITE command");
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &writeXfer) < 0) {
+        perror("Failed to send WREN command");
         close(fd);
-        fd = -1;
         return 1;
     }
 
-    // 3. Write Disable (WRDI)
-    uint8_t wrdi_cmd = NVRAM_SPI_CMD_WRDI;
-    struct spi_ioc_transfer wrdi = {
-        .tx_buf = (uintptr_t)&wrdi_cmd,
+    for (int i = 0; i < 4; i++) {
+        // 쓰기 명령 전송
+        tx_command_buf[0] = NVRAM_SPI_CMD_WRITE;
+        tx_command_buf[1] = ((address + i) >> 16) & 0xFF; // 상위 주소 비트 (A16)
+        tx_command_buf[2] = ((address + i) >> 8) & 0xFF;  // 중간 8비트 (A15-A8)
+        tx_command_buf[3] = (address + i) & 0xFF;         // 하위 8비트 (A7-A0)
+        tx_command_buf[4] = (value >> (8 * (3 - i))) & 0xFF; // MSB부터 분리
+
+        struct spi_ioc_transfer writeXfer2 = {
+            .tx_buf = (uintptr_t)tx_command_buf,
+            .rx_buf = (uintptr_t)rx_buf,
+            .len = sizeof(tx_command_buf),
+            .delay_usecs = 0,
+            .speed_hz = speed,
+            .bits_per_word = bits
+        };
+
+        if (ioctl(fd, SPI_IOC_MESSAGE(1), &writeXfer2) < 0) {
+            perror("Failed to send WRITE command");
+            close(fd);
+            return 1;
+        }
+    }
+
+    // WRDI 명령 전송
+    tx_buf[0] = NVRAM_SPI_CMD_WRDI;
+
+    struct spi_ioc_transfer writeXfer3 = {
+        .tx_buf = (uintptr_t)tx_buf,
         .rx_buf = 0,
         .len = 1,
         .delay_usecs = 0,
         .speed_hz = speed,
         .bits_per_word = bits
     };
-    ioctl(fd, SPI_IOC_MESSAGE(1), &wrdi);  // 실패해도 무시
 
-    if (fd != -1) {
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &writeXfer3) < 0) {
+        perror("Failed to send WRDI command");
         close(fd);
-        fd = -1;
+        return 1;
     }
 
-    //printf("WriteNVRAM4ByteValue ------------");
+    // SPI 디바이스 닫기
+    close(fd);
 
     return 0;
 }
 
+
 uint32_t getNVRAMId(void) {
-    nvram_spiLock();
+    uint8_t tx_buf1[1] = { NVRAM_SPI_CMD_GETID }; // 명령어 전송 버퍼
+    uint8_t tx_buf2[4] = { 0x00, 0x00, 0x00, 0x00 }; // 더미 데이터 전송 버퍼
+    uint8_t rx_buf[4] = { 0 }; // 수신 버퍼
+    uint32_t nvram_output = 0;
 
     if (nvramInit() != 0) {
         printf("nvramInit Fail!\n");
-        nvram_spiUnlock();
         return 1;
     }
 
-    uint8_t tx_buf1[1] = { NVRAM_SPI_CMD_GETID };
-    uint8_t tx_buf2[4] = { 0x00, 0x00, 0x00, 0x00 };
-    uint8_t rx_buf[4] = { 0 };
-    uint32_t nvram_output = 0;
-
+    // RDID 명령 전송
     struct spi_ioc_transfer getIdXfer[2] = {
         {
             .tx_buf = (uintptr_t)tx_buf1,
@@ -437,23 +380,19 @@ uint32_t getNVRAMId(void) {
     if (ioctl(fd, SPI_IOC_MESSAGE(2), getIdXfer) < 0) {
         perror("Failed to send RDID command and read data");
         close(fd);
-        fd = -1;
-        nvram_spiUnlock();
         return 1;
     }
 
-    // for (int i = 0; i < sizeof(rx_buf); i++) {
-    //     printf("getNVRAMId rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    // }
-
-    nvram_output = (rx_buf[0] << 24) | (rx_buf[1] << 16) | (rx_buf[2] << 8) | rx_buf[3];
-
-    if (fd != -1) {
-        close(fd);
-        fd = -1;
+    for (int i = 0; i < sizeof(rx_buf); i++) {
+        printf("getNVRAMId rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
     }
 
-    nvram_spiUnlock();
+    // 수신된 데이터 처리 (4바이트 ID 읽기)
+    nvram_output = (rx_buf[0] << 24) | (rx_buf[1] << 16) | (rx_buf[2] << 8) | rx_buf[3];
+
+    // SPI 디바이스 닫기
+    close(fd);
+
     return nvram_output;
 }
 
@@ -517,33 +456,22 @@ uint32_t  ReadBootCondition(void) {
 }
 
 uint32_t WriteCumulativeTime(uint32_t time) {
-    //printf("WriteCumulativeTime +++++++++++++");
-    nvram_spiLock();  
+    uint32_t readValue = ReadCumulativeTime();  
+    uint32_t sumValue = readValue + time;  
 
-    uint32_t val = ReadCumulativeTime();  
-    //printf("[DEBUG] Current cumulative time read from NVRAM: %u (0x%08X)\n", val, val);
-
-    uint32_t minutes = val % 100;
-    uint32_t hours = val / 100;
-    //printf("[DEBUG] Parsed as: %u hours, %u minutes\n", hours, minutes);
-
-    minutes += time;
-    //printf("[DEBUG] After adding %u minutes  total: %u hours, %u minutes (before adjustment)\n", time, hours, minutes);
+    uint32_t minutes = sumValue & 0xFF;  // 하위 8비트: 분
+    uint32_t hours = (sumValue >> 8) & 0xFFFFFF;  // 상위 24비트: 시간
 
     if (minutes >= 60) {
-        hours += minutes / 60;
-        minutes = minutes % 60;
-        //printf("[DEBUG] Adjusted for overflow: %u hours, %u minutes\n", hours, minutes);
+        hours += minutes / 60; 
+        minutes = minutes % 60; 
     }
 
-    uint32_t writeValue = hours * 100 + minutes;
-    //printf("[DEBUG] Final value to write to NVRAM: %u (0x%08X)\n", writeValue, writeValue);
+    // 시간과 분을 하나의 32비트 값으로 결합 (HHHHHHMM 형식)
+    uint32_t writeValue = (hours << 8) | minutes;
 
-    WriteNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR, writeValue);
-
-    nvram_spiUnlock();  
-    //printf("WriteCumulativeTime --------------");
-    return writeValue;
+    // NVRAM에 쓴 값 저장
+    return WriteNVRAM4ByteValue(NVRAM_CUMULATIVE_TIME_ADDR, writeValue);
 }
 
 uint32_t  ReadCumulativeTime(void) {
@@ -580,7 +508,7 @@ uint32_t  WriteBitResult(uint32_t address, uint32_t bitResult) {
 
 uint32_t  ReadBitResult(uint32_t address) {
 
-    //printf("ReadBitResult++ \n");
+    printf("ReadBitResult++ \n");
 
     switch (address) {
         case 2 :
@@ -673,7 +601,7 @@ uint32_t  WriteSystemLogReasonCount(uint32_t resetReason) {
             case 7: 
                  return WriteNVRAM4ByteValue(NVRAM_RESET_BY_BUTTON_COUNT_ADDR, writeValue);
             case 8: 
-                 return WriteNVRAM4ByteValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, writeValue);
+                 return WriteNVRAM4ByteValue(NVRAM_UNSAFETY_SHUTDOWN_COUNT_ADDR, writeValue);  
             case 12: 
                  return WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST, writeValue);
             default:
@@ -772,9 +700,8 @@ uint32_t ReadHwCompatInfoFromNVRAM(struct hwCompatInfo *info) {
 uint32_t WriteQtTestValueToNVRAM(const char *value) {
     uint32_t result = 0;
 
-    for (int i = 0; ; i++) {
-    WriteNVRAMValue(NVRAM_QT_TEST_ADDR + i, value[i]);
-    if (value[i] == '\0') break;
+    for (int i = 0; value[i] != '\0'; i++) {
+        WriteNVRAMValue(NVRAM_QT_TEST_ADDR + i, value[i]);
     }
 
     return result;
@@ -798,29 +725,6 @@ uint32_t ReadQtTestValueFromNVRAM(char *outBuffer) {
     // 20바이트를 넘도록 \0을 못 찾았으면 잘못된 값 → 에러
     return 2;
 }
-
-uint32_t WriteSWversion(const char *value) {
-    for (int i = 0; i < 5; i++) {
-        if (WriteNVRAMValue(NVRAM_SW_VERSION_INFO_ADDR + i, value[i]) != 0) {
-            return 1;  // 실패
-        }
-    }
-    return 0;  // 성공
-}
-
-uint32_t ReadSWversion(char *outValue) {
-    for (int i = 0; i < 5; i++) {
-        int result = ReadNVRAMValue(NVRAM_SW_VERSION_INFO_ADDR + i);
-        if (result < 0) {
-            return 1; 
-        }
-        outValue[i] = (char)result;
-    }
-    outValue[5] = '\0';
-    return 0;  
-}
-
-
 
 
 

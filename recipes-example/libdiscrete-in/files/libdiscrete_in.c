@@ -26,6 +26,10 @@ static uint32_t speed = 4000000;
 static uint8_t bits = 8;
 static uint8_t mode = 0;
 static int fd;
+static int lock_fd = -1;   
+
+// HOLT 용
+#define SPI_LOCK_FILE "/var/lock/holt_stm32.lock"
 
 uint32_t discreteSpiInit(void) {
     int ret = 0;
@@ -83,6 +87,28 @@ uint32_t discreteSpiInit(void) {
     return 0; // 초기화 성공
 }
 
+void holt_spiLock(void) {
+    if (lock_fd == -1) {
+        lock_fd = open(SPI_LOCK_FILE, O_CREAT | O_RDWR, 0666);
+        if (lock_fd < 0) {
+            perror("lock file open failed");
+            return;
+        }
+    }
+
+    if (flock(lock_fd, LOCK_EX) < 0) {
+        perror("flock LOCK_EX failed");
+    }
+}
+
+void holt_spiUnlock(void) {
+    if (lock_fd != -1) {
+        flock(lock_fd, LOCK_UN);
+        close(lock_fd);
+        lock_fd = -1;
+    }
+}
+
 // 8비트 비트 순서를 반전하는 함수
 uint8_t reverse_bits(uint8_t b) {
     b = (b & 0xF0) >> 4 | (b & 0x0F) << 4;
@@ -94,14 +120,19 @@ uint8_t reverse_bits(uint8_t b) {
 
 uint8_t GetDiscreteState7to0(void) {
     uint8_t tx_buf1[1];
-    uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
-    uint8_t rx_buf[1] = { 0 }; // 데이터 수신 버퍼
+    uint8_t tx_buf2[1] = { 0xFF };
+    uint8_t rx_buf[1] = { 0 };
     uint8_t discrete_state = 0;
 
-    discreteSpiInit(); // SPI 초기화 함수 호출
+    holt_spiLock(); 
 
-    // SENSE<7:0> 읽기
-    tx_buf1[0] = HOLT_READ_7_TO_0; // 0x90 명령어
+    if (discreteSpiInit() != 0) {
+        holt_spiUnlock();
+        return 1;
+    }
+
+    tx_buf1[0] = HOLT_READ_7_TO_0;
+
     struct spi_ioc_transfer get7to0Xfer[2] = {
         {
             .tx_buf = (uintptr_t)tx_buf1,
@@ -124,34 +155,33 @@ uint8_t GetDiscreteState7to0(void) {
     if (ioctl(fd, SPI_IOC_MESSAGE(2), get7to0Xfer) < 0) {
         perror("Failed to write/read SPI");
         close(fd);
+        holt_spiUnlock(); 
         return 1;
     }
+
     discrete_state = reverse_bits(rx_buf[0]);
 
-    // for (int i = 0; i < sizeof(tx_buf1); i++) {
-    //     printf("GetDiscreteState7to0 tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
-    // }
-
-    // for (int i = 0; i < sizeof(rx_buf); i++) {
-    //     printf("GetDiscreteState7to0 rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    // }
-
-    // SPI 디바이스 닫기
-    close(fd);
+    close(fd); // SPI 디바이스 닫기
+    holt_spiUnlock(); 
 
     return discrete_state;
 }
 
 uint8_t GetDiscreteState15to8(void) {
     uint8_t tx_buf1[1];
-    uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
-    uint8_t rx_buf[1] = { 0 }; // 데이터 수신 버퍼
+    uint8_t tx_buf2[1] = { 0xFF };
+    uint8_t rx_buf[1] = { 0 };
     uint8_t discrete_state = 0;
 
-    discreteSpiInit(); // SPI 초기화 함수 호출
+    holt_spiLock();
 
-    // SENSE<15:8> 읽기
-    tx_buf1[0] = HOLT_READ_15_TO_8; // 0x92 명령어
+    if (discreteSpiInit() != 0) {
+        holt_spiUnlock();
+        return 1;
+    }
+
+    tx_buf1[0] = HOLT_READ_15_TO_8;
+
     struct spi_ioc_transfer get15to8Xfer[2] = {
         {
             .tx_buf = (uintptr_t)tx_buf1,
@@ -174,21 +204,14 @@ uint8_t GetDiscreteState15to8(void) {
     if (ioctl(fd, SPI_IOC_MESSAGE(2), get15to8Xfer) < 0) {
         perror("Failed to write/read SPI");
         close(fd);
+        holt_spiUnlock();
         return 1;
     }
+
     discrete_state = reverse_bits(rx_buf[0]);
 
-    // for (int i = 0; i < sizeof(tx_buf1); i++) {
-    //     printf("GetDiscreteState15to8 tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
-    // }
-
-    // for (int i = 0; i < sizeof(rx_buf); i++) {
-    //     printf("GetDiscreteState15to8 rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    // }
-
-
-    // SPI 디바이스 닫기
     close(fd);
+    holt_spiUnlock();
 
     return discrete_state;
 }
@@ -208,11 +231,16 @@ uint16_t GetDiscreteState(void) {
 
 uint8_t ReadProgramSenseBanks(void) {
     uint8_t discrete_state = 0;
-    uint8_t tx_buf1[1] = {HOLT_READ_SENSE_BANK};  //0x84 명령어
-    uint8_t tx_buf2[1] = { 0xFF }; // 더미 데이터 전송 버퍼
-    uint8_t rx_buf[1] = {0}; // 수신 버퍼
+    uint8_t tx_buf1[1] = { HOLT_READ_SENSE_BANK };
+    uint8_t tx_buf2[1] = { 0xFF };
+    uint8_t rx_buf[1] = { 0 };
 
-    discreteSpiInit(); // SPI 초기화 함수 호출
+    holt_spiLock();
+
+    if (discreteSpiInit() != 0) {
+        holt_spiUnlock();
+        return 1;
+    }
 
     struct spi_ioc_transfer readSenseXfer[2] = {
         {
@@ -236,21 +264,14 @@ uint8_t ReadProgramSenseBanks(void) {
     if (ioctl(fd, SPI_IOC_MESSAGE(2), readSenseXfer) < 0) {
         perror("Failed to write/read SPI");
         close(fd);
+        holt_spiUnlock();
         return 1;
     }
 
     discrete_state = rx_buf[0];
 
-    // for (int i = 0; i < sizeof(tx_buf1); i++) {
-    //     printf("ReadProgramSenseBanks tx_buf[%d] = 0x%02X\n", i, tx_buf1[i]);
-    // }
-
-    // for (int i = 0; i < sizeof(rx_buf); i++) {
-    //     printf("ReadProgramSenseBanks rx_buf[%d] = 0x%02X\n", i, rx_buf[i]);
-    // }
-
-    // SPI 디바이스 닫기
     close(fd);
+    holt_spiUnlock();
 
     return discrete_state;
 }
@@ -258,12 +279,14 @@ uint8_t ReadProgramSenseBanks(void) {
 void WriteProgramSenseBanks(uint8_t bank_settings) {
     uint8_t tx_buf[2];
 
-    //printf("WriteProgramSenseBanks input Value : 0x%04X\n", bank_settings);
+    holt_spiLock();
 
-    discreteSpiInit(); // SPI 초기화 함수 호출
+    if (discreteSpiInit() != 0) {
+        holt_spiUnlock();
+        return 1;
+    }
 
-    // PSEN 레지스터 설정
-    tx_buf[0] = HOLT_WRITE_SENSE_BANK; // 0x04 명령어
+    tx_buf[0] = HOLT_WRITE_SENSE_BANK;
     tx_buf[1] = bank_settings & 0xFF;
 
     struct spi_ioc_transfer writeSenseXfer = {
@@ -278,15 +301,10 @@ void WriteProgramSenseBanks(uint8_t bank_settings) {
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &writeSenseXfer) < 0) {
         perror("Failed to write program sense banks to SPI");
         close(fd);
+        holt_spiUnlock();
         return;
     }
 
-    // for (int i = 0; i < sizeof(tx_buf); i++) {
-    //     printf("WriteProgramSenseBanks tx_buf[%d] = 0x%02X\n", i, tx_buf[i]);
-    // }
-
-
-    // SPI 디바이스 닫기
     close(fd);
+    holt_spiUnlock();
 }
-

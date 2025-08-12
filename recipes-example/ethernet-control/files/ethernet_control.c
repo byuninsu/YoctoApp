@@ -134,16 +134,9 @@ char* checkEthernetInterface() {
                 return NULL;
             }
 
-
+            close(sock);
             return iface;
 
-            // if (edata.data) {
-            //     printf("Link detected on %s\n", iface);
-            //     close(sock);
-            //     return iface;
-            // } else {
-            //     printf("No link detected on %s\n", iface);
-            // }
         }
     }
 

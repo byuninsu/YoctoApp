@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 #include <termios.h>
 #include "watchdog_control.h"
 #include "usb_control.h"
@@ -20,6 +21,9 @@
 #define BOOT_NOMAL_MODE 0x00  
 #define PHY_SETTING_FILE "/mnt/dataSSD/phy_setting"
 #define LOG_FILE_PATH "/mnt/dataSSD/ProgramPinErrorLog"
+
+pthread_t led_init_thread;
+volatile int led_init_running = 0;
 
 int keepRunning = 1; // 프로그램 실행 플래그
 
@@ -45,13 +49,13 @@ void logProgramPinError() {
     logFile = fopen(LOG_FILE_PATH, "a");
     if (logFile) {
         fprintf(logFile, "%sPROGRAM_PIN_COMPAT_FAULT\n", timestamp);
+        fflush(logFile);  // 캐시 플러시
+        fsync(fileno(logFile)); // 디스크 동기화
         fclose(logFile);
     } else {
         perror("Failed to open log file");
     }
 
-    fflush(logFile);  // 캐시 플러시
-    fsync(fileno(logFile)); // 디스크 동기화
 }
 
 
@@ -80,7 +84,7 @@ int main(int argc, char *argv[]) {
             } else if (strcmp(argv[3], "SENSE") == 0) {
                 if (strcmp(argv[4], "write") == 0) {
                     uint8_t value = (uint8_t)strtoul(argv[5], NULL, 0);
-                    printf("main input Value: 0x%02X\n", value);
+                    printf("SENSE write input Value: 0x%02X\n", value);
                     WriteProgramSenseBanks(value);
                 } else if (strcmp(argv[4], "read") == 0) {
                     printf("HOLT set Sense Value: 0x%02X\n", ReadProgramSenseBanks());
@@ -284,8 +288,18 @@ int main(int argc, char *argv[]) {
                     printf("Invalid GPIO number or value. GPIO should be 0-15 and value should be 0 or 1.\n");
                 }
             } else if (strcmp(argv[3], "green") == 0) {
+
+                //init LED 종료
+                FILE* cmdFile = fopen("/tmp/led_cmd", "w");
+                if (cmdFile) {
+                    fprintf(cmdFile, "stop\n");
+                    fclose(cmdFile);
+                } else {
+                    printf("Failed to open /tmp/led_cmd to stop led-init\n");
+                }
+                
                 sendJetsonBootComplete();
-            } else if (strcmp(argv[3], "conf") == 0) {
+            }  else if (strcmp(argv[3], "conf") == 0) {
                 uint8_t port = (uint8_t)strtol(argv[4], NULL, 16);
                 uint8_t value = (uint8_t)strtol(argv[5], NULL, 16);
                 printf("main setGpioConf inpu value : %d\n", value);
@@ -375,17 +389,24 @@ else if (strcmp(argv[1], "nvram") == 0) {
             uint32_t addr = (uint32_t)strtoul(argv[4], NULL, 0); 
             uint32_t value = (uint32_t)strtoul(argv[5], NULL, 0); 
             WriteBitResult(addr,value);
+        } else if (strcmp(argv[3], "version") == 0) {
+            const char *content = argv[4];  
+            WriteSWversion(content);
         } else if (strcmp(argv[3], "ssd") == 0) {
             const struct hwCompatInfo myInfo = {
                 .supplier_part_no = "OESG-51G09000",
-                .supplier_serial_no = "2504H0004G",
+                .supplier_serial_no = "2504H0005G",
                 .ssd0_model_no = "TS320GMTE560I", 
-                .ssd0_serial_no = "I483820001",
+                .ssd0_serial_no = "I490480002",
                 .ssd1_model_no = "EXPI4M7680GB",
-                .ssd1_serial_no = "X08TZB3R130446",
+                .ssd1_serial_no = "X08TZB3R130456",
                 .sw_part_number = "HSC-OESG-IRIS"
             };
             WriteHwCompatInfoToNVRAM(&myInfo);
+
+            const char *verStr = "1.0";
+            WriteSWversion(verStr);
+
         } else if (strcmp(argv[3], "serial") == 0) {
             int fieldIndex = atoi(argv[4]);    
             const char *content = argv[5];     
@@ -438,6 +459,13 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[3], "check") == 0) {
             uint8_t result = CheckHwCompatInfo();
             printf("Reading CheckHwCompatInfo Value: %d\n", result); 
+        } else if (strcmp(argv[3], "id") == 0) {
+            uint32_t id  = getNVRAMId();
+            printf("Read NVRAM ID Value: 0x%08X\n", id);
+        } else if (strcmp(argv[3], "version") == 0) {
+            char buf[6] ={0};
+            ReadSWversion(buf);
+            printf("SW Version: %s\n", buf);
         } else {
             fprintf(stderr, "Invalid read type: %s\n", argv[3]);
         }
@@ -448,19 +476,27 @@ else if (strcmp(argv[1], "nvram") == 0) {
 
     // Handling 'pushbutton get' command
     else if (strcmp(argv[1], "pushbutton") == 0) {
-        if (argc < 3 || strcmp(argv[2], "get") != 0) {
-            fprintf(stderr, "Usage: %s pushbutton get\n", argv[0]);
-            return 1;
+        if (strcmp(argv[2], "get") == 0) {
+            uint8_t state = GetButtonState();
+            if (state == 1) {
+                printf("Push Button State: ON\n");
+            } else if (state == 0) {
+                printf("Push Button State: OFF\n");
+            } else {
+                printf("Failed to read Push Button state.\n");
+            }
+        } else if (strcmp(argv[2], "holdup") == 0) {
+            uint8_t state = GetHoldupState();
+            if (state == 1) {
+                printf("Holdup State: ON\n");
+            } else if (state == 0) {
+                printf("Holdup State: OFF\n");
+            } else {
+                printf("Failed to read Holdup state.\n");
+            }
         }
 
-        uint8_t state = GetButtonState();
-        if (state == 1) {
-            printf("Push Button State: ON\n");
-        } else if (state == 0) {
-            printf("Push Button State: OFF\n");
-        } else {
-            printf("Failed to read Push Button state.\n");
-        }
+
     }
 
     // Handling 'rs232' commands
@@ -474,6 +510,15 @@ else if (strcmp(argv[1], "nvram") == 0) {
             ActivateRS232();
         } else if (strcmp(argv[2], "disable") == 0) {
             DeactivateRS232();
+        } else if (strcmp(argv[2], "available") == 0) {
+            int state = isRS232Available();
+            if (state == 0) {
+                printf("RS232 State: ON\n");
+            } else if (state == 1) {
+                printf("RS232 State: OFF\n");
+            } else {
+                printf("Failed to read RS232 state.\n");
+            }
         }
     }
 
@@ -523,25 +568,35 @@ else if (strcmp(argv[1], "nvram") == 0) {
             fprintf(stderr, "Usage: %s usb <enable|disable>\n", argv[0]);
             return 1;
         }
-        if (strcmp(argv[2], "enable") == 0) {
-            ActivateUSB();
-        } else if (strcmp(argv[2], "disable") == 0) {
-            DeactivateUSB();
-        } if (strcmp(argv[2], "cinit") == 0) {
-        // USB-C FUSB 관련 초기화
-        const char *cmd = "i2cget -y 1 0x25 0x02 0x02";
-        int ret = system(cmd);
+            if (strcmp(argv[2], "enable") == 0) {
+                ActivateUSB();
+            } else if (strcmp(argv[2], "disable") == 0) {
+                DeactivateUSB();
+            } if (strcmp(argv[2], "cinit") == 0) {
+            // USB-C FUSB 관련 초기화
+            const char *cmd = "i2cset -y 1 0x25 0x02 0x02";
+            int ret = system(cmd);
 
-        if (ret == -1) {
-            perror("system call failed");
-            return 1;
-        } else if (WEXITSTATUS(ret) != 0) {
-            fprintf(stderr, "i2cget command failed with exit code %d\n", WEXITSTATUS(ret));
-            return 1;
-        }
+            if (ret == -1) {
+                perror("system call failed");
+                return 1;
+            } else if (WEXITSTATUS(ret) != 0) {
+                fprintf(stderr, "i2cset command failed with exit code %d\n", WEXITSTATUS(ret));
+                return 1;
+            }
 
-        printf("USB-C port initialized via FUSB302 (i2c addr 0x25)\n");
-        return 0;
+            printf("USB-C port initialized via FUSB302 (i2c addr 0x25)\n");
+            return 0;
+            } else if (strcmp(argv[2], "available") == 0) {
+
+            int state = checkUsb();
+            if (state == 0) {
+                printf("USB State: ON\n");
+            } else if (state == 1) {
+                printf("USB State: OFF\n");
+            } else {
+                printf("Failed to read USB state.\n");
+            }
         }
 
         return 0;
@@ -727,16 +782,29 @@ else if (strcmp(argv[1], "nvram") == 0) {
             uint32_t result = readtBitResult(2);
 
             if (result & 0x7FFFFFFF) {
-                printf("\n[ BSP & API initialization Fail ]\n");
+                //printf("\n[ BSP & API initialization Fail ]\n");
                 snprintf(rs232Result, sizeof(rs232Result), "\n[ BSP & API initialization Fail ]\n ");
             } else {
-                printf("\n[ BSP & API initialization Success ]\n");
+                //printf("\n[ BSP & API initialization Success ]\n");
                 snprintf(rs232Result, sizeof(rs232Result), "\n[ BSP & API initialization Success ]\n ");
             }
 
-            sendRS232Message(rs232Result); //Rs232 전송
-        } else if ( strcmp(argv[2], "startSh") == 0) {
-            system("sh /mnt/dataSSD/huins_exec/root/testsh/latest/run-all.sh");
+            sendRS232MessageBeforeInit(rs232Result); //Rs232 전송
+        } else if (strcmp(argv[2], "startSh") == 0) {
+            if (argc < 4) {
+                fprintf(stderr, "Missing script path\n");
+                return 1;
+            }
+
+            const char* scriptPath = argv[3];
+
+            char printRs232[128] = {0};
+            snprintf(printRs232, sizeof(printRs232), "\n[ START run-all Script: %s ]\n", scriptPath);
+            sendRS232MessageBeforeInit(printRs232);
+
+            char command[256] = {0};
+            snprintf(command, sizeof(command), "sh %s", scriptPath);
+            system(command);
         }
 
     }

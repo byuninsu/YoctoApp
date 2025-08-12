@@ -8,7 +8,7 @@
 
 #define JSON_FILE_PATH "/mnt/dataSSD/ssdLog_test.json"
 #define SSD_DEVICE "/dev/nvme0n1"
-#define LOG_INTERVAL 900 
+#define LOG_INTERVAL 900
 
 // 시간 계산 함수
 void update_time(int *hours, int *minutes, int *seconds) {
@@ -166,7 +166,7 @@ int main() {
         update_time(&hours, &minutes, &seconds); // 시간 업데이트
 
         char formatted_time[9];
-        snprintf(formatted_time, sizeof(formatted_time), "%04d%02d%02d", hours, minutes, 0); // HHHHMMSS format
+        snprintf(formatted_time, sizeof(formatted_time), "%04d%02d%02d", hours, minutes, 0); 
 
         char *ssd_capacity = get_ssd_available_capacity();
         if (ssd_capacity == NULL) {

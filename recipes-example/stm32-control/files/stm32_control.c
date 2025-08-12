@@ -3,8 +3,10 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <sys/file.h>
 #include <linux/spi/spidev.h>
 #include <string.h>
+#include <pthread.h>
 #include "stm32_control.h"
 #include "nvram_control.h"
 
@@ -12,10 +14,14 @@ static const char *device = "/dev/spidev1.0";
 static uint32_t speed = 1000000;
 static uint8_t bits = 8;
 static uint8_t mode = 0;
-static int fd;
 static uint8_t startBit = 0xAA;
 static uint8_t lasttBit = 0xBB;
+static int fd = -1;        
+static int lock_fd = -1;   
+static pthread_mutex_t spi_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// STM32용
+#define SPI_LOCK_FILE "/var/lock/spi_stm32.lock"
 
 int spiInit(void) {
 
@@ -58,13 +64,50 @@ int spiInit(void) {
     return 0; // 초기화 성공
 }
 
+void stm32_spiLock(void) {
+    pthread_mutex_lock(&spi_mutex);
+
+    if (lock_fd == -1) {
+        lock_fd = open(SPI_LOCK_FILE, O_CREAT | O_RDWR, 0666);
+        if (lock_fd < 0) {
+            perror("lock file open failed");
+            pthread_mutex_unlock(&spi_mutex);
+            return;
+        }
+    }
+
+    if (flock(lock_fd, LOCK_EX) < 0) {
+        perror("flock LOCK_EX failed");
+        close(lock_fd);
+        lock_fd = -1;
+        pthread_mutex_unlock(&spi_mutex);
+        return;
+    }
+}
+
+void stm32_spiUnlock(void) {
+    if (lock_fd != -1) {
+        if (flock(lock_fd, LOCK_UN) < 0) {
+            perror("flock LOCK_UN failed");
+        }
+        close(lock_fd);
+        lock_fd = -1;
+    }
+
+    pthread_mutex_unlock(&spi_mutex);
+}
+
 float sendCommand(stm32_spi_reg command) {
+    stm32_spiLock();
 
-    spiInit();
+    if (spiInit() != 0) {
+        stm32_spiUnlock();
+        return -1;
+    }
 
-    uint8_t tx_buf[6] = {startBit, command, 0x00, 0x00, 0x00,lasttBit};
-	uint8_t tx_buf2[4] = { 0xFF,0xFF,0xFF,0xFF };
-    uint8_t spi_rx_buf[4] = { 0 }; 
+    uint8_t tx_buf[6] = {startBit, command, 0x00, 0x00, 0x00, lasttBit};
+    uint8_t tx_buf2[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+    uint8_t spi_rx_buf[4] = {0};
     float data;
 
     struct spi_ioc_transfer xfer[2] = {
@@ -86,73 +129,79 @@ float sendCommand(stm32_spi_reg command) {
         }
     };
 
+    // 1. 명령 전송
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
         perror("Failed to send command");
+        stm32_spiUnlock();
         return -1;
     }
 
-	usleep(10000);
+    usleep(10000);
 
-	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+    // 2. 응답 수신
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
         perror("Failed to receive data");
+        stm32_spiUnlock();
         return -1;
     }
-
-    //rx_buf 내용 출력
-    // for (int i = 0; i < sizeof(spi_rx_buf); i++) {
-    //     printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
-    // }
 
     memcpy(&data, spi_rx_buf, sizeof(data));
 
-    // 바이트 배열을 float로 변환
-    data = *(float*)spi_rx_buf;
-
+    // SPI 디바이스 닫기
     if (fd != -1) {
-        close(fd);   
-        fd = -1;     
+        close(fd);
+        fd = -1;
     }
 
+    stm32_spiUnlock();
     return data;
 }
 
 uint8_t sendOnlyOne(stm32_spi_reg command) {
+    stm32_spiLock(); 
 
-    spiInit();
+    if (spiInit() != 0) {
+        stm32_spiUnlock();
+        return 1;
+    }
 
-    uint8_t tx_buf[6] = {startBit, command, 0x00, 0x00, 0x00, lasttBit };
-    float data;
+    uint8_t tx_buf[6] = {startBit, command, 0x00, 0x00, 0x00, lasttBit};
 
-    struct spi_ioc_transfer xfer[1] = {
-        {
-            .tx_buf = (uintptr_t)tx_buf,
-            .rx_buf = 0,
-            .len = sizeof(tx_buf),
-            .delay_usecs = 0,
-            .speed_hz = speed,
-            .bits_per_word = bits
-        },
+    struct spi_ioc_transfer xfer = {
+        .tx_buf = (uintptr_t)tx_buf,
+        .rx_buf = 0,
+        .len = sizeof(tx_buf),
+        .delay_usecs = 0,
+        .speed_hz = speed,
+        .bits_per_word = bits
     };
 
-    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer) < 0) {
         perror("Failed to spi sendOnlyOne");
+        stm32_spiUnlock();   
         return 1;
     }
 
     if (fd != -1) {
-        close(fd);   
-        fd = -1;     
+        close(fd);
+        fd = -1;
     }
+
+    stm32_spiUnlock();  
     return 0;
 }
 
 void sendBootCondition(void) {
+    stm32_spiLock();
 
-    spiInit();
+    if (spiInit() != 0) {
+        stm32_spiUnlock();
+        return;
+    }
 
     uint8_t tx_buf[6] = { startBit, STM32_SPI_BOOTCONDITION, 0x00, 0x00, 0x00, lasttBit };
-	uint8_t tx_buf2[1] = { 0xFF };
-    uint8_t spi_rx_buf[1] = { 0 }; 
+    uint8_t tx_buf2[1] = { 0xFF };
+    uint8_t spi_rx_buf[1] = { 0 };
 
     struct spi_ioc_transfer xfer[2] = {
         {
@@ -175,38 +224,44 @@ void sendBootCondition(void) {
 
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
         perror("Failed to send command");
+        stm32_spiUnlock();
+        return;
     }
 
-	usleep(10000);
+    usleep(10000);
 
-	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
         perror("Failed to receive data");
+        stm32_spiUnlock();
+        return;
     }
 
-    //rx_buf 내용 출력
-    //printf("rx_buf[0]: %02X\n", spi_rx_buf[0]);
-
-    //MCU로 인한 재부팅처리 NVRAM에 기록
-    if(spi_rx_buf[0] == 0x03){
+    if (spi_rx_buf[0] == 0x03) {
         WriteBootCondition(0x03);
-    } else if (spi_rx_buf[0] == 0x05){
+    } else if (spi_rx_buf[0] == 0x05) {
         WriteBootCondition(0x05);
     } else {
         WriteBootCondition(0x02);
     }
-    
+
     if (fd != -1) {
-        close(fd);   
-        fd = -1;     
+        close(fd);
+        fd = -1;
     }
+
+    stm32_spiUnlock();
 }
 
 
 uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
+    stm32_spiLock();
 
-    spiInit();
+    if (spiInit() != 0) {
+        stm32_spiUnlock();
+        return 1;
+    }
 
-    uint8_t tx_buf[6] = {startBit, command, timeout, 0x00, 0x00, lasttBit };
+    uint8_t tx_buf[6] = {startBit, command, timeout, 0x00, 0x00, lasttBit};
 
     struct spi_ioc_transfer xfer = {
         .tx_buf = (uintptr_t)tx_buf,
@@ -219,27 +274,30 @@ uint8_t sendSetTimeout(stm32_spi_reg command, uint8_t timeout) {
 
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer) < 0) {
         perror("Failed to send command and timeout");
+        stm32_spiUnlock();
         return 1;
     }
-
-    //printf("sendSetTimeout Command : %x Timeout : %x\n", tx_buf[0], tx_buf[1]);
 
     if (fd != -1) {
         close(fd);
         fd = -1;
     }
 
+    stm32_spiUnlock();
     return 0;
 }
 
 uint8_t sendCommandForResponseOneByte(stm32_spi_reg command) {
+    stm32_spiLock();
 
-    spiInit();
+    if (spiInit() != 0) {
+        stm32_spiUnlock();
+        return 0xFF;
+    }
 
     uint8_t tx_buf[6] = { startBit, command, 0x00, 0x00, 0x00, lasttBit };
-	uint8_t tx_buf2[2] = { 0xFF, 0xFF };
-    uint8_t spi_rx_buf[1] = { 0 }; 
-    float data;
+    uint8_t tx_buf2[2] = { 0xFF, 0xFF };
+    uint8_t spi_rx_buf[1] = { 0 };
 
     struct spi_ioc_transfer xfer[2] = {
         {
@@ -262,71 +320,72 @@ uint8_t sendCommandForResponseOneByte(stm32_spi_reg command) {
 
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
         perror("Failed to send command");
-        return -1;
+        stm32_spiUnlock();
+        return 0xFF;
     }
 
-	usleep(10000);
+    usleep(10000);
 
-	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
         perror("Failed to receive data");
-        return -1;
+        stm32_spiUnlock();
+        return 0xFF;
     }
-
-    //rx_buf 내용 출력
-    // for (int i = 0; i < sizeof(spi_rx_buf); i++) {
-    //     printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
-    // }
 
     if (fd != -1) {
-        close(fd);   
-        fd = -1;     
+        close(fd);
+        fd = -1;
     }
 
+    stm32_spiUnlock();
     return spi_rx_buf[0];
 }
 
-uint8_t sendFourByte(stm32_spi_reg command, uint8_t firstVaule, uint8_t secondVaule, uint8_t thirdVaule ) {
+uint8_t sendFourByte(stm32_spi_reg command, uint8_t firstValue, uint8_t secondValue, uint8_t thirdValue) {
+    stm32_spiLock();
 
-    spiInit();
+    if (spiInit() != 0) {
+        stm32_spiUnlock();
+        return 1;
+    }
 
-    uint8_t tx_buf[6] = {startBit, command, firstVaule, secondVaule, thirdVaule, lasttBit};
+    uint8_t tx_buf[6] = {startBit, command, firstValue, secondValue, thirdValue, lasttBit};
 
-//    /printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
-//         tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
-
-    struct spi_ioc_transfer xfer[1] = {
-        {
-            .tx_buf = (uintptr_t)tx_buf,
-            .rx_buf = 0,
-            .len = sizeof(tx_buf),
-            .delay_usecs = 0,
-            .speed_hz = speed,
-            .bits_per_word = bits
-        },
+    struct spi_ioc_transfer xfer = {
+        .tx_buf = (uintptr_t)tx_buf,
+        .rx_buf = 0,
+        .len = sizeof(tx_buf),
+        .delay_usecs = 0,
+        .speed_hz = speed,
+        .bits_per_word = bits
     };
 
-    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer) < 0) {
         perror("Failed to spi sendFourByte");
+        stm32_spiUnlock();
         return 1;
     }
 
     if (fd != -1) {
-        close(fd);   
-        fd = -1;     
+        close(fd);
+        fd = -1;
     }
+
+    stm32_spiUnlock();
     return 0;
 }
 
-uint8_t sendFourByteForResponse(stm32_spi_reg command, uint8_t firstVaule) {
+uint8_t sendFourByteForResponse(stm32_spi_reg command, uint8_t firstValue) {
+    stm32_spiLock();
 
-    spiInit();
+    if (spiInit() != 0) {
+        stm32_spiUnlock();
+        return 0xFF;
+    }
 
-    uint8_t tx_buf[6] = {startBit, command, firstVaule, 0x00, 0x00, lasttBit };
-	uint8_t tx_buf2[2] = { 0xFF, 0xFF };
-    uint8_t spi_rx_buf[1] = { 0 }; 
-
-    // printf("[SPI TX] CMD: 0x%02X, PARAM1: 0x%02X, PARAM2: 0x%02X, PARAM3: 0x%02X\n",
-    //     tx_buf[0], tx_buf[1], tx_buf[2], tx_buf[3]);
+    uint8_t tx_buf[6] = {startBit, command, firstValue, 0x00, 0x00, lasttBit};
+    uint8_t tx_buf2[2] = {0xFF, 0xFF};
+    uint8_t spi_rx_buf[1] = {0};
 
     struct spi_ioc_transfer xfer[2] = {
         {
@@ -349,26 +408,24 @@ uint8_t sendFourByteForResponse(stm32_spi_reg command, uint8_t firstVaule) {
 
     if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[0]) < 0) {
         perror("Failed to send command");
-        return -1;
+        stm32_spiUnlock();
+        return 0xFF;
     }
 
-	usleep(10000);
+    usleep(10000);
 
-	if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
+    if (ioctl(fd, SPI_IOC_MESSAGE(1), &xfer[1]) < 0) {
         perror("Failed to receive data");
-        return -1;
+        stm32_spiUnlock();
+        return 0xFF;
     }
-
-    //rx_buf 내용 출력
-    // for (int i = 0; i < sizeof(spi_rx_buf); i++) {
-    //     printf("rx_buf[%d]: %02X\n", i, spi_rx_buf[i]);
-    // }
 
     if (fd != -1) {
-        close(fd);   
-        fd = -1;     
+        close(fd);
+        fd = -1;
     }
 
+    stm32_spiUnlock();
     return spi_rx_buf[0];
 }
 
