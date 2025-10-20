@@ -395,11 +395,11 @@ else if (strcmp(argv[1], "nvram") == 0) {
         } else if (strcmp(argv[3], "ssd") == 0) {
             const struct hwCompatInfo myInfo = {
                 .supplier_part_no = "OESG-51G09000",
-                .supplier_serial_no = "2504H0005G",
+                .supplier_serial_no = "2504H0004G",
                 .ssd0_model_no = "TS320GMTE560I", 
-                .ssd0_serial_no = "I490480002",
+                .ssd0_serial_no = "I483820001",
                 .ssd1_model_no = "EXPI4M7680GB",
-                .ssd1_serial_no = "X08TZB3R130456",
+                .ssd1_serial_no = "X08TZB3R130446",
                 .sw_part_number = "HSC-OESG-IRIS"
             };
             WriteHwCompatInfoToNVRAM(&myInfo);
@@ -871,7 +871,7 @@ else if (strcmp(argv[1], "nvram") == 0) {
                     break;
             }
 
-            uint32_t result = ReadBitResult(type);
+            uint32_t result = readtBitResult(type);
 
 
             printf("BIT Result Value [%s]: 0x%X\n", type_str, result);

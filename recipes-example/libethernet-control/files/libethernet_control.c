@@ -105,14 +105,17 @@ char* checkEthernetInterface() {
     }
 
     for (int i = 0; i < 2; i++) {
+        memset(&ifr, 0, sizeof(ifr));              
         snprintf(iface, sizeof(iface), "eth%d", i);
         strncpy(ifr.ifr_name, iface, IFNAMSIZ - 1);
+        ifr.ifr_name[IFNAMSIZ - 1] = '\0';
 
-        if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
-            perror("ioctl SIOCGIFHWADDR");
-            close(sock);
-            return NULL;
-        }
+
+    if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
+        fprintf(stderr, "[%s] SIOCGIFHWADDR failed: errno=%d (%s)\n",
+                iface, errno, strerror(errno));
+        continue;
+    }
 
         snprintf(mac_addr, sizeof(mac_addr), "%02x:%02x:%02x:%02x:%02x:%02x",
                  (unsigned char)ifr.ifr_hwaddr.sa_data[0],
@@ -124,7 +127,6 @@ char* checkEthernetInterface() {
 
         if ((unsigned char)ifr.ifr_hwaddr.sa_data[0] == 0x48) {
             //printf("Interface %s has a MAC address starting with 48: %s\n", iface, mac_addr);
-
             edata.cmd = ETHTOOL_GLINK;
             ifr.ifr_data = (caddr_t)&edata;
 

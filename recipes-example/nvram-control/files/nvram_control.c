@@ -562,16 +562,16 @@ uint32_t  WriteBitResult(uint32_t address, uint32_t bitResult) {
     //printf("WriteBitResult input address = 0x%08x bitResult = 0x%08x\n", address, bitResult);
     switch (address) {
         case 2 :
-            printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON \n");
+            //printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON \n");
             return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_POWERON, bitResult);
         case 3 :
             //printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS \n");
             return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_CONTINUOUS, bitResult);
         case 4 :
-            printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED \n");
+            //printf("WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED \n");
             return WriteNVRAM4ByteValue(NVRAM_BIT_RESULT_INITIATED, bitResult);
         case 12 :
-            printf("WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST \n");
+            //printf("WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST \n");
             return WriteNVRAM4ByteValue(NVRAM_ACTIVATED_TEST, bitResult);
     }
 
